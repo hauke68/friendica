@@ -103,10 +103,8 @@ function install_post(&$a) {
 }
 
 function get_db_errno() {
-	if(class_exists('mysqli'))
-		return mysqli_connect_errno();
-	else
-		return mysql_errno();
+
+	return dberrno();
 }		
 
 function install_content(&$a) {

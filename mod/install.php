@@ -255,7 +255,7 @@ function install_content(&$a) {
 			$phpath = notags(trim($_POST['phpath']));
 			
 			$adminmail = notags(trim($_POST['adminmail']));
-			$timezone = ((x($_POST,'timezone')) ? ($_POST['timezone']) : 'America/Los_Angeles');
+			$timezone = ((x($_POST,'timezone')) ? ($_POST['timezone']) : date_default_timezone_get());
 			
 			$tpl = get_markup_template('install_settings.tpl');
 			$o .= replace_macros($tpl, array(

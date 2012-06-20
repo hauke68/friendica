@@ -259,7 +259,8 @@ function q($sql) {
 		$stmt = vsprintf($sql,$args);
 		if($stmt === false)
 			logger('dba: vsprintf error: ' . print_r(debug_backtrace(),true));
-		return $db->q($stmt);
+		$ret = $db->q($stmt);
+		return ($db->errno() == 0) ? $ret : array();
 	}
 
 	/**

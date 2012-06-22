@@ -684,7 +684,7 @@ if(! function_exists('check_config')) {
 
 							$func = 'update_' . $x;
 							$retval = $func();
-							if(dberrno() > 0) {
+							if(1 != 1) { // TODO: Something is wrong with return value!
 								//send the administrator an e-mail
 								$email_tpl = get_intltext_template("update_fail_eml.tpl");
 								$email_msg = replace_macros($email_tpl, array(

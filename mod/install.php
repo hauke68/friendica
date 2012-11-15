@@ -107,6 +107,17 @@ function get_db_errno() {
 	return dberrno();
 }		
 
+function select_database($current = 'MySQL') {
+
+	$o ='<select id="timezone_select" name="dbtype">';
+	$o .= '<option value="mysql" '.(($current == 'mysql') ? "selected" : "").'>MySQL</option>';
+	$o .= '<option value="pgsql" '.(($current == 'pgsql') ? "selected" : "").'>PostgreSQL</option>';
+	$o .= '</select>';
+
+return $o;
+}
+
+
 function install_content(&$a) {
 
 	global $install_wizard_pass, $db;
@@ -224,6 +235,8 @@ function install_content(&$a) {
 				'$info_01' => t('In order to install Friendica we need to know how to connect to your database.'),
 				'$info_02' => t('Please contact your hosting provider or site administrator if you have questions about these settings.'),
 				'$info_03' => t('The database you specify below should already exist. If it does not, please create it before continuing.'),
+				'$lbl_55' => t('Database system'),
+				'$dbselect' => ((x($_POST,'dbtype')) ? select_database($_POST['dbtype']) : select_database()),
 
 				'$status' => $wizard_status,
 				

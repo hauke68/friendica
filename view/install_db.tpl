@@ -18,6 +18,10 @@ $info_03
 <input type="hidden" name="phpath" value="$phpath" />
 <input type="hidden" name="pass" value="3" />
 
+<div class="field_select">
+$lbl_55<br>
+$dbselect
+</div>
 {{ inc field_input.tpl with $field=$dbhost }}{{endinc}}
 {{ inc field_input.tpl with $field=$dbuser }}{{endinc}}
 {{ inc field_password.tpl with $field=$dbpass }}{{endinc}}

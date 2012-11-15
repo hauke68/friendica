@@ -103,10 +103,8 @@ function install_post(&$a) {
 }
 
 function get_db_errno() {
-	if(class_exists('mysqli'))
-		return mysqli_connect_errno();
-	else
-		return mysql_errno();
+
+	return dberrno();
 }		
 
 function install_content(&$a) {
@@ -257,7 +255,7 @@ function install_content(&$a) {
 			$phpath = notags(trim($_POST['phpath']));
 			
 			$adminmail = notags(trim($_POST['adminmail']));
-			$timezone = ((x($_POST,'timezone')) ? ($_POST['timezone']) : 'America/Los_Angeles');
+			$timezone = ((x($_POST,'timezone')) ? ($_POST['timezone']) : date_default_timezone_get());
 			
 			$tpl = get_markup_template('install_settings.tpl');
 			$o .= replace_macros($tpl, array(
@@ -471,7 +469,7 @@ function load_database($db) {
 	foreach($arr as $a) {
 		if(strlen(trim($a))) {	
 			$r = @$db->q(trim($a));
-			if(! $r) {
+			if(dberrno() > 0) {
 				$errors .=  t('Errors encountered creating database tables.') . $a . EOL;
 			}
 		}

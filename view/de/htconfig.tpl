@@ -66,3 +66,13 @@ $a->config['system']['rino_encrypt'] = true;
 
 $a->config['system']['theme'] = 'duepuntozero';
 
+// By default allow pseudonyms
+
+$a->config['system']['no_regfullname'] = true;
+$a->config['system']['debugging'] = true;
+$a->config['system']['logfile'] = '/tmp/logfile.out';
+$a->config['system']['loglevel'] = LOGGER_DEBUG;
+error_reporting(E_ERROR | E_WARNING | E_PARSE );
+ini_set('error_log','/tmp/php.out');
+ini_set('log_errors','1');
+ini_set('display_errors', '0');

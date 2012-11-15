@@ -19,8 +19,10 @@ class dba {
 	private $debug = 0;
 	private $db;
 	public  $mysqli = true;
+	public  $pdo = false;
 	public  $connected = false;
 	public  $error = false;
+	private $errno = false;
 
 	function __construct($server,$user,$pass,$db,$install = false) {
 
@@ -45,18 +47,30 @@ class dba {
 				}
 			}
 		}
-
-		if(class_exists('mysqli')) {
-			$this->db = @new mysqli($server,$user,$pass,$db);
-			if(! mysqli_connect_errno()) {
+		if(class_exists('PDO')) {
+			logger('dba: Using PDO');
+			try {
+				$this->db = new PDO('mysql:host='.$server.';dbname='.$db, $user, $pass);
 				$this->connected = true;
+				$this->mysqli = false;
+				$this->pdo = true;
+			} catch(PDOException $e) {
+				logger('dba: '.$e->getMessage());
 			}
 		}
 		else {
-			$this->mysqli = false;
-			$this->db = mysql_connect($server,$user,$pass);
-			if($this->db && mysql_select_db($db,$this->db)) {
-				$this->connected = true;
+			if(class_exists('mysqli')) {
+				$this->db = @new mysqli($server,$user,$pass,$db);
+				if(! mysqli_connect_errno()) {
+					$this->connected = true;
+				}
+			}
+			else {
+				$this->mysqli = false;
+				$this->db = mysql_connect($server,$user,$pass);
+				if($this->db && mysql_select_db($db,$this->db)) {
+					$this->connected = true;
+				}
 			}
 		}
 		if(! $this->connected) {
@@ -81,7 +95,7 @@ class dba {
 		if(x($a->config,'system') && x($a->config['system'],'db_log'))
 			$stamp1 = microtime(true);
 
-		if($this->mysqli)
+		if($this->mysqli || $this->pdo)
 			$result = @$this->db->query($sql);
 		else
 			$result = @mysql_query($sql,$this->db);
@@ -98,11 +112,18 @@ class dba {
 			}
 		}
 
-		if($this->mysqli) {
-			if($this->db->errno)
+		if($this->pdo) {
+			if($this->db->errorCode()) {
+				$err = $this->db->errorInfo();
+				$this->errno = $err[1]; // See PDO doc
+				$this->error = $err[2]; // See PDO doc
+			}
+		}
+		elseif($this->mysqli) {
+			if($this->errno = $this->db->errno)
 				$this->error = $this->db->error;
 		}
-		elseif(mysql_errno($this->db))
+		elseif($this->errno = mysql_errno($this->db))
 				$this->error = mysql_error($this->db);
 
 		if(strlen($this->error)) {
@@ -147,7 +168,13 @@ class dba {
 			return $result;
 
 		$r = array();
-		if($this->mysqli) {
+		if($this->pdo) {
+			// result is of type PDOStatement
+			if($result->rowCount() > 0) {
+				$r = $result->fetchAll(PDO::FETCH_ASSOC);
+			}
+		}
+		elseif($this->mysqli) {
 			if($result->num_rows) {
 				while($x = $result->fetch_array(MYSQLI_ASSOC))
 					$r[] = $x;
@@ -162,7 +189,6 @@ class dba {
 			}
 		}
 
-
 		if($this->debug)
 			logger('dba: ' . printable(print_r($r, true)));
 		return($r);
@@ -176,14 +202,23 @@ class dba {
 		if($this->db && $this->connected) {
 			if($this->mysqli)
 				return @$this->db->real_escape_string($str);
+			elseif($this->pdo)
+				return $str;
 			else
 				return @mysql_real_escape_string($str,$this->db);
 		}
 	}
 
+	public function errno() {
+
+		return $this->errno;
+	}
+
 	function __destruct() {
 		if ($this->db) 
-			if($this->mysqli)
+			if($this->pdo)
+				$this->db = null;
+			elseif($this->mysqli)
 				$this->db->close();
 			else
 				mysql_close($this->db);
@@ -235,7 +270,7 @@ function q($sql) {
 		//logger("dba: q: $stmt", LOGGER_ALL);
 		if($stmt === false)
 			logger('dba: vsprintf error: ' . print_r(debug_backtrace(),true), LOGGER_DEBUG);
-		return $db->q($stmt);
+		return ($db->errno() == 0) ? $ret : array();
 	}
 
 	/**
@@ -266,6 +301,18 @@ function dbq($sql) {
 	return $ret;
 }}
 
+if(! function_exists('dberrno')) {
+	function dberrno() {
+		global $db;
+
+		if($db && $db->connected)
+			$ret = $db->errno();
+		else
+			$ret = null;
+
+		return $ret;
+	}
+}
 
 // Caller is responsible for ensuring that any integer arguments to 
 // dbesc_array are actually integers and not malformed strings containing

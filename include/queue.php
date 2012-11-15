@@ -2,7 +2,7 @@
 require_once("boot.php");
 require_once('include/queue_fn.php');
 
-function queue_run($argv, $argc){
+function queue_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)){
@@ -161,7 +161,7 @@ function queue_run($argv, $argc){
 			case NETWORK_DIASPORA:
 				if($contact['notify']) {
 					logger('queue: diaspora_delivery: item ' . $q_item['id'] . ' for ' . $contact['name']);
-					$deliver_status = diaspora_transmit($owner,$contact,$data,$public);
+					$deliver_status = diaspora_transmit($owner,$contact,$data,$public,true);
 
 					if($deliver_status == (-1))
 						update_queue_time($q_item['id']);

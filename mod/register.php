@@ -12,7 +12,7 @@ function register_post(&$a) {
 	call_hooks('register_post', $arr);
 
 	$max_dailies = intval(get_config('system','max_daily_registrations'));
-	if($max_dailes) {
+	if($max_dailies) {
 		$r = q("select count(*) as total from user where register_date > UTC_TIMESTAMP - INTERVAL 1 day");
 		if($r && $r[0]['total'] >= $max_dailies) {
 			return;
@@ -42,6 +42,7 @@ function register_post(&$a) {
 		$verified = 0;
 		break;
 	}
+    
 
 	require_once('include/user.php');
 
@@ -182,7 +183,7 @@ function register_content(&$a) {
 	}
 
 	$max_dailies = intval(get_config('system','max_daily_registrations'));
-	if($max_dailes) {
+	if($max_dailies) {
 		$r = q("select count(*) as total from user where register_date > UTC_TIMESTAMP - INTERVAL 1 day");
 		if($r && $r[0]['total'] >= $max_dailies) {
 			logger('max daily registrations exceeded.');
@@ -193,6 +194,8 @@ function register_content(&$a) {
 
 	if(x($_SESSION,'theme'))
 		unset($_SESSION['theme']);
+	if(x($_SESSION,'mobile-theme'))
+		unset($_SESSION['mobile-theme']);
 
 
 	$username     = ((x($_POST,'username'))     ? $_POST['username']     : ((x($_GET,'username'))     ? $_GET['username']              : ''));
@@ -232,7 +235,7 @@ function register_content(&$a) {
 			'$yes_selected' => ' checked="checked" ',
 			'$no_selected'  => '',
 			'$str_yes'      => t('Yes'),
-			'$str_no'       => t('No')
+			'$str_no'       => t('No'),
 		));
 	}
 
@@ -244,6 +247,8 @@ function register_content(&$a) {
 	$arr = array('template' => $o);
 
 	call_hooks('register_form',$arr);
+
+	$o = $arr['template'];
 
 	$o = replace_macros($o, array(
 		'$oidhtml' => $oidhtml,
@@ -271,7 +276,8 @@ function register_content(&$a) {
 		'$email'     => $email,
 		'$nickname'  => $nickname,
 		'$license'   => $license,
-		'$sitename'  => $a->get_hostname()
+		'$sitename'  => $a->get_hostname(),
+      
 	));
 	return $o;
 

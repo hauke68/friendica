@@ -13,8 +13,10 @@
  */
 
 require_once('boot.php');
+require_once('object/BaseObject.php');
 
 $a = new App;
+BaseObject::set_app($a);
 
 /**
  *
@@ -26,6 +28,8 @@ $a = new App;
 $install = ((file_exists('.htconfig.php') && filesize('.htconfig.php')) ? false : true);
 
 @include(".htconfig.php");
+
+
 
 $lang = get_browser_language();
 	
@@ -59,20 +63,13 @@ if(! $install) {
 /**
  *
  * Important stuff we always need to do.
- * Initialise authentication and  date and time. 
- * Create the HTML head for the page, even if we may not use it (xml, etc.)
+ *
  * The order of these may be important so use caution if you think they're all
  * intertwingled with no logical order and decide to sort it out. Some of the
  * dependencies have changed, but at least at one time in the recent past - the 
  * order was critical to everything working properly
  *
  */
-
-require_once("datetime.php");
-
-$a->timezone = (($default_timezone) ? $default_timezone : 'UTC');
-
-date_default_timezone_set($a->timezone);
 
 session_start();
 
@@ -118,13 +115,9 @@ if(! x($_SESSION,'authenticated'))
 	header('X-Account-Management-Status: none');
 
 
-/*
- * Create the page head after setting the language
- * and getting any auth credentials
- */
-
-$a->init_pagehead();
-
+/* set up page['htmlhead'] and page['end'] for the modules to use */
+$a->page['htmlhead'] = '';
+$a->page['end'] = '';
 
 
 if(! x($_SESSION,'sysmsg'))
@@ -253,7 +246,10 @@ if(! $install)
 
 if($a->module_loaded) {
 	$a->page['page_title'] = $a->module;
+	$placeholder = '';
+
 	if(function_exists($a->module . '_init')) {
+		call_hooks($a->module . '_mod_init', $placeholder);
 		$func = $a->module . '_init';
 		$func($a);
 	}
@@ -273,21 +269,52 @@ if($a->module_loaded) {
 	if(($_SERVER['REQUEST_METHOD'] === 'POST') && (! $a->error)
 		&& (function_exists($a->module . '_post'))
 		&& (! x($_POST,'auth-params'))) {
+		call_hooks($a->module . '_mod_post', $_POST);
 		$func = $a->module . '_post';
 		$func($a);
 	}
 
 	if((! $a->error) && (function_exists($a->module . '_afterpost'))) {
+		call_hooks($a->module . '_mod_afterpost',$placeholder);
 		$func = $a->module . '_afterpost';
 		$func($a);
 	}
 
 	if((! $a->error) && (function_exists($a->module . '_content'))) {
+		$arr = array('content' => $a->page['content']);
+		call_hooks($a->module . '_mod_content', $arr);
+		$a->page['content'] = $arr['content'];
 		$func = $a->module . '_content';
-		$a->page['content'] .= $func($a);
+		$arr = array('content' => $func($a));
+		call_hooks($a->module . '_mod_aftercontent', $arr);
+		$a->page['content'] .= $arr['content'];
+	}
+
+	if(function_exists(str_replace('-','_',current_theme()) . '_content_loaded')) {
+		$func = str_replace('-','_',current_theme()) . '_content_loaded';
+		$func($a);
 	}
 
 }
+
+
+/*
+ * Create the page head after setting the language
+ * and getting any auth credentials
+ *
+ * Moved init_pagehead() and init_page_end() to after
+ * all the module functions have executed so that all
+ * theme choices made by the modules can take effect
+ */
+
+$a->init_pagehead();
+
+/**
+ * Build the page ending -- this is stuff that goes right before
+ * the closing </body> tag
+ */
+
+$a->init_page_end();
 
 // If you're just visiting, let javascript take you home
 
@@ -353,7 +380,24 @@ if($a->module != 'install') {
  * Build the page - now that we have all the components
  */
 
-$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => current_theme_url()));
+if(!$a->theme['stylesheet'])
+	$stylesheet = current_theme_url();
+else
+	$stylesheet = $a->theme['stylesheet'];
+$a->page['htmlhead'] = replace_macros($a->page['htmlhead'], array('$stylesheet' => $stylesheet));
+
+if($a->is_mobile || $a->is_tablet) {
+	if(isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
+		$link = $a->get_baseurl() . '/toggle_mobile?address=' . curPageURL();
+	}
+	else {
+		$link = $a->get_baseurl() . '/toggle_mobile?off=1&address=' . curPageURL();
+	}
+	$a->page['footer'] = replace_macros(get_markup_template("toggle_mobile_footer.tpl"), array(
+	                     	'$toggle_link' => $link,
+	                     	'$toggle_text' => t('toggle mobile')
+    	                 ));
+}
 
 $page    = $a->page;
 $profile = $a->profile;

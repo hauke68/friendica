@@ -3,7 +3,7 @@ require_once("boot.php");
 require_once('include/queue_fn.php');
 require_once('include/html2plain.php');
 
-function delivery_run($argv, $argc){
+function delivery_run(&$argv, &$argc){
 	global $a, $db;
 
 	if(is_null($a)){
@@ -113,7 +113,7 @@ function delivery_run($argv, $argc){
 			$uid = $r[0]['uid'];
 			$updated = $r[0]['edited'];
 
-			// The following seems superfluous. We've already checked for "if (! intval($r[0]['parent']))" a few lines up
+			// POSSIBLE CLEANUP --> The following seems superfluous. We've already checked for "if (! intval($r[0]['parent']))" a few lines up
 			if(! $parent_id)
 				continue;
 
@@ -280,7 +280,7 @@ function delivery_run($argv, $argc){
 						continue;
 
 					// private emails may be in included in public conversations. Filter them.
-					if(($public_message) && $item['private'])
+					if(($public_message) && $item['private'] == 1)
 						continue;
 
 					$item_contact = get_item_contact($item,$icontacts);
@@ -323,13 +323,14 @@ function delivery_run($argv, $argc){
 						WHERE `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 						AND `contact`.`network` = '%s' AND `user`.`nickname` = '%s'
 						$sql_extra
-						AND `user`.`account_expired` = 0 LIMIT 1",
+						AND `user`.`account_expired` = 0 AND `user`.`account_removed` = 0 LIMIT 1",
 						dbesc(NETWORK_DFRN),
 						dbesc($nickname)
 					);
 
-					if(count($x)) {
-						if($owner['page-flags'] == PAGE_COMMUNITY && ! $x[0]['writable']) {
+					if($x && count($x)) {
+						$write_flag = ((($x[0]['rel']) && ($x[0]['rel'] != CONTACT_IS_SHARING)) ? true : false);
+						if((($owner['page-flags'] == PAGE_COMMUNITY) || ($write_flag)) && (! $x[0]['writable'])) {
 							q("update contact set writable = 1 where id = %d limit 1",
 								intval($x[0]['id'])
 							);
@@ -383,7 +384,7 @@ function delivery_run($argv, $argc){
 							continue;
 
 						// private emails may be in included in public conversations. Filter them.
-						if(($public_message) && $item['private'])
+						if(($public_message) && $item['private'] == 1)
 							continue;
 	
 						$item_contact = get_item_contact($item,$icontacts);

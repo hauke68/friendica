@@ -48,8 +48,13 @@ function profiles_post(&$a) {
 			
 		$name = notags(trim($_POST['name']));
 
+		if(! strlen($name)) {
+			$name = '[No Name]';
+		}
+
 		if($orig[0]['name'] != $name)
 			$namechanged = true;
+
 
 
 		$pdesc = notags(trim($_POST['pdesc']));
@@ -96,13 +101,24 @@ function profiles_post(&$a) {
 				}
 				else {
 					$newname = $lookup;
-					if(strstr($lookup,' ')) {
+/*					if(strstr($lookup,' ')) {
 						$r = q("SELECT * FROM `contact` WHERE `name` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($newname),
 							intval(local_user())
 						);
 					}
 					else {
+						$r = q("SELECT * FROM `contact` WHERE `nick` = '%s' AND `uid` = %d LIMIT 1",
+							dbesc($lookup),
+							intval(local_user())
+						);
+					}*/
+					
+					$r = q("SELECT * FROM `contact` WHERE `name` = '%s' AND `uid` = %d LIMIT 1",
+						dbesc($newname),
+						intval(local_user())
+					);
+					if(! $r) {
 						$r = q("SELECT * FROM `contact` WHERE `nick` = '%s' AND `uid` = %d LIMIT 1",
 							dbesc($lookup),
 							intval(local_user())
@@ -130,6 +146,9 @@ function profiles_post(&$a) {
 		$politic = notags(trim($_POST['politic']));
 		$religion = notags(trim($_POST['religion']));
 
+		$likes = fix_mce_lf(escape_tags(trim($_POST['likes'])));
+		$dislikes = fix_mce_lf(escape_tags(trim($_POST['dislikes'])));
+
 		$about = fix_mce_lf(escape_tags(trim($_POST['about'])));
 		$interest = fix_mce_lf(escape_tags(trim($_POST['interest'])));
 		$contact = fix_mce_lf(escape_tags(trim($_POST['contact'])));
@@ -155,7 +174,15 @@ function profiles_post(&$a) {
 			if($withchanged) {
 				$changes[] = '[color=#ff0000]&hearts;[/color] ' . t('Romantic Partner');
 				$value = strip_tags($with);
-			}							
+			}
+			if($likes != $orig[0]['likes']) {
+				$changes[] = t('Likes');
+				$value = $likes;
+			}
+			if($dislikes != $orig[0]['dislikes']) {
+				$changes[] = t('Dislikes');
+				$value = $dislikes;
+			}
 			if($work != $orig[0]['work']) {
 				$changes[] = t('Work/Employment');
 			}
@@ -222,6 +249,8 @@ function profiles_post(&$a) {
 			`religion` = '%s',
 			`pub_keywords` = '%s',
 			`prv_keywords` = '%s',
+			`likes` = '%s',
+			`dislikes` = '%s',
 			`about` = '%s',
 			`interest` = '%s',
 			`contact` = '%s',
@@ -254,6 +283,8 @@ function profiles_post(&$a) {
 			dbesc($religion),
 			dbesc($pub_keywords),
 			dbesc($prv_keywords),
+			dbesc($likes),
+			dbesc($dislikes),
 			dbesc($about),
 			dbesc($interest),
 			dbesc($contact),
@@ -370,9 +401,17 @@ function profile_activity($changed, $value) {
 	$arr['deny_gid']  = $a->user['deny_gid'];
 
 	$i = item_store($arr);
-	if($i)
+	if($i) {
+
+		// give it a permanent link
+		q("update item set plink = '%s' where id = %d limit 1",
+			dbesc($a->get_baseurl() . '/display/' . $a->user['nickname'] . '/' . $i),
+			intval($i)
+		);
+
 	   	proc_run('php',"include/notifier.php","activity","$i");
 
+	}
 }
 
 
@@ -523,6 +562,10 @@ function profiles_content(&$a) {
 			'$baseurl' => $a->get_baseurl(true),
 			'$editselect' => $editselect,
 		));
+		$a->page['end'] .= replace_macros(get_markup_template('profed_end.tpl'), array(
+			'$baseurl' => $a->get_baseurl(true),
+			'$editselect' => $editselect,
+		));
 
 
 		$opt_tpl = get_markup_template("profile-hide-friends.tpl");
@@ -533,9 +576,6 @@ function profiles_content(&$a) {
 			'$yes_selected' => (($r[0]['hide-friends']) ? " checked=\"checked\" " : ""),
 			'$no_selected' => (($r[0]['hide-friends'] == 0) ? " checked=\"checked\" " : "")
 		));
-
-		$a->page['htmlhead'] .= "<script type=\"text/javascript\" src=\"js/country.js\" ></script>";
-
 
 
 
@@ -577,6 +617,8 @@ function profiles_content(&$a) {
 			'$lbl_religion' => t('Religious Views:'),
 			'$lbl_pubkey' => t('Public Keywords:'),
 			'$lbl_prvkey' => t('Private Keywords:'),
+			'$lbl_likes' => t('Likes:'),
+			'$lbl_dislikes' => t('Dislikes:'),
 			'$lbl_ex2' => t('Example: fishing photography software'),
 			'$lbl_pubdsc' => t("\x28Used for suggesting potential friends, can be seen by others\x29"),
 			'$lbl_prvdsc' => t("\x28Used for searching profiles, never shown to others\x29"),
@@ -617,6 +659,8 @@ function profiles_content(&$a) {
 			'$religion' => $r[0]['religion'],
 			'$pub_keywords' => $r[0]['pub_keywords'],
 			'$prv_keywords' => $r[0]['prv_keywords'],
+			'$likes' => $r[0]['likes'],
+			'$dislikes' => $r[0]['dislikes'],
 			'$music' => $r[0]['music'],
 			'$book' => $r[0]['book'],
 			'$tv' => $r[0]['tv'],
@@ -652,7 +696,7 @@ function profiles_content(&$a) {
 
 			foreach($r as $rr) {
 				$o .= replace_macros($tpl, array(
-					'$photo' => $rr['thumb'],
+					'$photo' => $a->get_cached_avatar_image($rr['thumb']),
 					'$id' => $rr['id'],
 					'$alt' => t('Profile Image'),
 					'$profile_name' => $rr['profile-name'],

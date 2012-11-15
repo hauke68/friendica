@@ -87,11 +87,16 @@ function dfrn_poll_init(&$a) {
 
 				if((int) $xml->status == 1) {
 					$_SESSION['authenticated'] = 1;
+					if(! x($_SESSION,'remote'))
+						$_SESSION['remote'] = array();
+
+					$_SESSION['remote'][] = array('cid' => $r[0]['id'],'uid' => $r[0]['uid'],'url' => $r[0]['url']);
+
 					$_SESSION['visitor_id'] = $r[0]['id'];
 					$_SESSION['visitor_home'] = $r[0]['url'];
 					$_SESSION['visitor_handle'] = $r[0]['addr'];
 					$_SESSION['visitor_visiting'] = $r[0]['uid'];
-					info( sprintf(t('%s welcomes %s'), $r[0]['username'] , $r[0]['name']) . EOL);
+					info( sprintf(t('%1$s welcomes %2$s'), $r[0]['username'] , $r[0]['name']) . EOL);
 					// Visitors get 1 day session.
 					$session_id = session_id();
 					$expire = time() + 86400;
@@ -443,7 +448,7 @@ function dfrn_poll_content(&$a) {
 			$encrypted_id = '';
 			$id_str = $my_id . '.' . mt_rand(1000,9999);
 
-			if($r[0]['duplex'] && strlen($r[0]['pubkey'])) {
+			if(($r[0]['duplex'] && strlen($r[0]['pubkey'])) || (! strlen($r[0]['prvkey']))) {
 				openssl_public_encrypt($hash,$challenge,$r[0]['pubkey']);
 				openssl_public_encrypt($id_str,$encrypted_id,$r[0]['pubkey']);
 			}
@@ -516,10 +521,13 @@ function dfrn_poll_content(&$a) {
 				
 				if(((int) $xml->status == 0) && ($xml->challenge == $hash)  && ($xml->sec == $sec)) {
 					$_SESSION['authenticated'] = 1;
+					if(! x($_SESSION,'remote'))
+						$_SESSION['remote'] = array();
+					$_SESSION['remote'][] = array('cid' => $r[0]['id'],'uid' => $r[0]['uid'],'url' => $r[0]['url']);
 					$_SESSION['visitor_id'] = $r[0]['id'];
 					$_SESSION['visitor_home'] = $r[0]['url'];
 					$_SESSION['visitor_visiting'] = $r[0]['uid'];
-					info( sprintf(t('%s welcomes %s'), $r[0]['username'] , $r[0]['name']) . EOL);
+					info( sprintf(t('%1$s welcomes %2$s'), $r[0]['username'] , $r[0]['name']) . EOL);
 					// Visitors get 1 day session.
 					$session_id = session_id();
 					$expire = time() + 86400;

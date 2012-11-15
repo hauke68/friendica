@@ -245,7 +245,7 @@
 			
 		}
 		
-		logger('api_user: ' . $extra_query . ' ' , $user);
+		logger('api_user: ' . $extra_query . ', user: ' . $user);
 		// user info		
 		$uinfo = q("SELECT *, `contact`.`id` as `cid` FROM `contact`
 				WHERE 1
@@ -719,14 +719,18 @@
 		if ($page<0) $page=0;
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 		$max_id = (x($_REQUEST,'max_id')?$_REQUEST['max_id']:0);
+		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
 		//$since_id = 0;//$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 
 		$start = $page*$count;
 
 		//$include_entities = (x($_REQUEST,'include_entities')?$_REQUEST['include_entities']:false);
 
+		$sql_extra = '';
 		if ($max_id > 0)
-			$sql_extra = 'AND `item`.`id` <= '.intval($max_id);
+			$sql_extra .= ' AND `item`.`id` <= '.intval($max_id);
+		if ($exclude_replies > 0)
+			$sql_extra .= ' AND `item`.`parent` = `item`.`id`';
 
 		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
@@ -1061,11 +1065,14 @@
 		$page = (x($_REQUEST,'page')?$_REQUEST['page']-1:0);
 		if ($page<0) $page=0;
 		$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
+		$exclude_replies = (x($_REQUEST,'exclude_replies')?1:0);
 		//$since_id = 0;//$since_id = (x($_REQUEST,'since_id')?$_REQUEST['since_id']:0);
 		
 		$start = $page*$count;
 
-		if ($user_info['self']==1) $sql_extra = "AND `item`.`wall` = 1 ";
+		$sql_extra = '';
+		if ($user_info['self']==1) $sql_extra .= " AND `item`.`wall` = 1 ";
+		if ($exclude_replies > 0)  $sql_extra .= ' AND `item`.`parent` = `item`.`id`';
 
 		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`,
@@ -1654,7 +1661,6 @@ account/update_profile_background_image
 account/update_profile_image
 blocks/create
 blocks/destroy
-oauth/authorize
 
 Not implemented in status.net:
 statuses/retweeted_to_me

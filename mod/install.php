@@ -230,7 +230,6 @@ function install_content(&$a) {
 			$dbpass = notags(trim($_POST['dbpass']));
 			$dbdata = notags(trim($_POST['dbdata']));
 			$phpath = notags(trim($_POST['phpath']));
-			
 
 			$tpl = get_markup_template('install_db.tpl');
 
@@ -242,7 +241,7 @@ function install_content(&$a) {
 				'$info_03' => t('The database you specify below should already exist. If it does not, please create it before continuing.'),
 				'$lbl_55' => t('Database system'),
 				/* '$dbselect' => ((x($_POST,'dbtype')) ? select_database($_POST['dbtype']) : select_database()), */
-				'$dbselect' => array('dbselect', 'Database system', 'mysql', "", Array('mysql' => 'MySQL', 'pgsql' => 'PostgreSQL')), 
+				'$dbselect' => array('dbselect', t('Database system'), 'mysql', "", Array('mysql' => 'MySQL', 'pgsql' => 'PostgreSQL')), 
  
 				'$status' => $wizard_status,
 				
@@ -252,8 +251,6 @@ function install_content(&$a) {
 				'$dbdata' => array('dbdata', t('Database Name'), $dbdata, ''),
 				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.')),
 
-				
-
 				'$lbl_10' => t('Please select a default timezone for your website'),
 				
 				'$baseurl' => $a->get_baseurl(),
@@ -261,7 +258,6 @@ function install_content(&$a) {
 				'$phpath' => $phpath,
 				
 				'$submit' => t('Submit'),
-				
 			));
 			return $o;
 		}; break;
@@ -292,7 +288,6 @@ function install_content(&$a) {
 				'$phpath' => $phpath,
 				
 				'$adminmail' => array('adminmail', t('Site administrator email address'), $adminmail, t('Your account email address must match this in order to use the web admin panel.')),
-
 				
 				'$timezone' => field_timezone('timezone', t('Please select a default timezone for your website'), $timezone, ''),
 				'$baseurl' => $a->get_baseurl(),
@@ -353,8 +348,6 @@ function check_php(&$phpath, &$checks) {
 		}
 		check_add($checks, t('PHP register_argc_argv'), $passed, true, $help);
 	}
-	
-
 }
 
 function check_keys(&$checks) {
@@ -458,7 +451,6 @@ function check_htaccess(&$checks) {
     }
 	
 }
-
 	
 function manual_config(&$a) {
 	$data = htmlentities($a->data['txt'],ENT_COMPAT,'UTF-8');
@@ -476,7 +468,6 @@ function load_database_rem($v, $i){
 	}
 }
 
-
 function load_database($db) {
 
 	$str = file_get_contents('database.sql');
@@ -486,7 +477,7 @@ function load_database($db) {
 		if(strlen(trim($a))) {	
 			$r = @$db->q(trim($a));
 			if(dberrno() > 0) {
-				$errors .=  t('Errors encountered creating database tables.') . $a . EOL;
+				$errors .= t('Errors encountered creating database tables.').$a.EOL;
 			}
 		}
 	}

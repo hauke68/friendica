@@ -18,18 +18,20 @@ class dba {
 
 	private $debug = 0;
 	private $db;
+	private $driver;
 	public  $mysqli = true;
 	public  $pdo = false;
 	public  $connected = false;
 	public  $error = false;
 	private $errno = false;
 
-	function __construct($server,$user,$pass,$db,$install = false) {
+	function __construct($server,$user,$pass,$dbname, $driver = 'mysql', $install = false) {
 
 		$server = trim($server);
 		$user = trim($user);
 		$pass = trim($pass);
-		$db = trim($db);
+		$dbname = trim($dbname);
+		$this->driver = trim($driver);
 
 		if (!(strlen($server) && strlen($user))){
 			$this->connected = false;
@@ -50,7 +52,7 @@ class dba {
 		if(class_exists('PDO')) {
 			logger('dba: Using PDO');
 			try {
-				$this->db = new PDO('mysql:host='.$server.';dbname='.$db, $user, $pass);
+				$this->db = new PDO('mysql:host='.$server.';dbname='.$dbname, $user, $pass);
 				$this->connected = true;
 				$this->mysqli = false;
 				$this->pdo = true;
@@ -60,7 +62,7 @@ class dba {
 		}
 		else {
 			if(class_exists('mysqli')) {
-				$this->db = @new mysqli($server,$user,$pass,$db);
+				$this->db = @new mysqli($server,$user,$pass,$dbname);
 				if(! mysqli_connect_errno()) {
 					$this->connected = true;
 				}
@@ -68,7 +70,7 @@ class dba {
 			else {
 				$this->mysqli = false;
 				$this->db = mysql_connect($server,$user,$pass);
-				if($this->db && mysql_select_db($db,$this->db)) {
+				if($this->db && mysql_select_db($dbname,$this->db)) {
 					$this->connected = true;
 				}
 			}
@@ -82,6 +84,10 @@ class dba {
 
 	public function getdb() {
 		return $this->db;
+	}
+
+	public function getdriver() {
+		return $this->driver;
 	}
 
 	public function q($sql) {

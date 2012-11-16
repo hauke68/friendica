@@ -5,7 +5,7 @@
 	<img id="like-rotator-$item.id" class="like-rotator" src="images/rotator.gif" alt="$item.wait" title="$item.wait" style="display: none;" />
 </div>
 
-<div class="wall-item-container $item.indent">
+<div class="wall-item-container $item.indent $item.shiny ">
 	<div class="wall-item-item">
 		<div class="wall-item-info">
 			<div class="contact-photo-wrapper"
@@ -70,8 +70,10 @@
 			
 			<div class="wall-item-actions-tools">
 
-				{{ if $item.drop.dropping }}
+				{{ if $item.drop.pagedrop }}
 					<input type="checkbox" title="$item.drop.select" name="itemselected[]" class="item-select" value="$item.id" />
+				{{ endif }}
+				{{ if $item.drop.dropping }}
 					<a href="item/drop/$item.id" onclick="return confirmDelete();" class="icon delete s16" title="$item.drop.delete">$item.drop.delete</a>
 				{{ endif }}
 				{{ if $item.edpost }}

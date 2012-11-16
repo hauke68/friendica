@@ -15,7 +15,7 @@ $(document).ready(function() {
        
     });
     
-    $("div#pause").attr("style", "position: fixed;bottom: 43px;left: 5px;");
+    $("div#pause").attr("style", "position: fixed;bottom: 25px;left: 5px;");
     $("div#pause").html("<img src='images/pause.gif' alt='pause' title='pause live-updates (ctrl+space)' style='border: 1px solid black;opacity: 0.2;'>");
     $(document).keydown(function(event) {
     if (!$("div#pause").html()){
@@ -41,6 +41,7 @@ $(document).ready(function() {
 	       }
 	     
 	});
+	
 	
 	function tautogrow(id){
 		$("textarea#comment-edit-text-" +id).autogrow(); 	
@@ -128,6 +129,27 @@ $(document).ready(function() {
 	function cmtBbClose(id) {
 	$(".comment-edit-bb-" + id).hide();
 	}
-
 	
+	/*$(document).ready(function(){
+	var doctitle = document.title;
+	function checkNotify() {
+	if(document.getElementById("notify-update").innerHTML != "")
+	document.title = "("+document.getElementById("notify-update").innerHTML+") " + doctitle;
+	else
+	document.title = doctitle;
+	};
+	setInterval(function () {checkNotify();}, 10 * 1000);
+	})*/
+</script>
+<script>
+var pagetitle = null;
+$("nav").bind('nav-update',  function(e,data){
+  if (pagetitle==null) pagetitle = document.title;
+  var count = $(data).find('notif').attr('count');
+  if (count>0) {
+    document.title = "("+count+") "+pagetitle;
+  } else {
+    document.title = pagetitle;
+  }
+});
 </script>

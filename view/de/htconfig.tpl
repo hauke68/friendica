@@ -3,6 +3,7 @@
 // Set the following for your MySQL installation
 // Copy or rename this file to .htconfig.php
 
+$db_driver = '$dbselect';
 $db_host = '$dbhost';
 $db_user = '$dbuser';
 $db_pass = '$dbpass';

@@ -26,6 +26,7 @@ function install_post(&$a) {
 			break; // just in case return don't return :)
 		case 3:
 			$urlpath = $a->get_path();
+			$dbselect = notags(trim($_POST['dbselect']));
 			$dbhost = notags(trim($_POST['dbhost']));
 			$dbuser = notags(trim($_POST['dbuser']));
 			$dbpass = notags(trim($_POST['dbpass']));
@@ -62,6 +63,7 @@ function install_post(&$a) {
 			break;
 		case 4;
 			$urlpath = $a->get_path();
+			$dbselect = notags(trim($_POST['dbselect']));
 			$dbhost = notags(trim($_POST['dbhost']));
 			$dbuser = notags(trim($_POST['dbuser']));
 			$dbpass = notags(trim($_POST['dbpass']));
@@ -75,6 +77,7 @@ function install_post(&$a) {
 
 			$tpl = get_intltext_template('htconfig.tpl');
 			$txt = replace_macros($tpl,array(
+				'$dbselect' => $dbselect,
 				'$dbhost' => $dbhost,
 				'$dbuser' => $dbuser,
 				'$dbpass' => $dbpass,
@@ -222,6 +225,7 @@ function install_content(&$a) {
 		case 2: { // Database config
 
 			$dbhost = ((x($_POST,'dbhost')) ? notags(trim($_POST['dbhost'])) : 'localhost');
+			$dbselect = notags(trim($_POST['dbselect']));
 			$dbuser = notags(trim($_POST['dbuser']));
 			$dbpass = notags(trim($_POST['dbpass']));
 			$dbdata = notags(trim($_POST['dbdata']));
@@ -229,6 +233,7 @@ function install_content(&$a) {
 			
 
 			$tpl = get_markup_template('install_db.tpl');
+
 			$o .= replace_macros($tpl, array(
 				'$title' => $install_title,
 				'$pass' => t('Database connection'),
@@ -236,8 +241,9 @@ function install_content(&$a) {
 				'$info_02' => t('Please contact your hosting provider or site administrator if you have questions about these settings.'),
 				'$info_03' => t('The database you specify below should already exist. If it does not, please create it before continuing.'),
 				'$lbl_55' => t('Database system'),
-				'$dbselect' => ((x($_POST,'dbtype')) ? select_database($_POST['dbtype']) : select_database()),
-
+				/* '$dbselect' => ((x($_POST,'dbtype')) ? select_database($_POST['dbtype']) : select_database()), */
+				'$dbselect' => array('dbselect', 'Database system', 'mysql', "", Array('mysql' => 'MySQL', 'pgsql' => 'PostgreSQL')), 
+ 
 				'$status' => $wizard_status,
 				
 				'$dbhost' => array('dbhost', t('Database Server Name'), $dbhost, ''),
@@ -262,6 +268,7 @@ function install_content(&$a) {
 		case 3: { // Site settings
 			require_once('datetime.php');
 			$dbhost = ((x($_POST,'dbhost')) ? notags(trim($_POST['dbhost'])) : 'localhost');
+			$dbselect = notags(trim($_POST['dbselect']));
 			$dbuser = notags(trim($_POST['dbuser']));
 			$dbpass = notags(trim($_POST['dbpass']));
 			$dbdata = notags(trim($_POST['dbdata']));
@@ -277,6 +284,7 @@ function install_content(&$a) {
 
 				'$status' => $wizard_status,
 				
+				'$dbselect' => $dbselect, 
 				'$dbhost' => $dbhost, 
 				'$dbuser' => $dbuser,
 				'$dbpass' => $dbpass,
@@ -287,13 +295,8 @@ function install_content(&$a) {
 
 				
 				'$timezone' => field_timezone('timezone', t('Please select a default timezone for your website'), $timezone, ''),
-				
 				'$baseurl' => $a->get_baseurl(),
-				
-				
-				
 				'$submit' => t('Submit'),
-				
 			));
 			return $o;
 		}; break;

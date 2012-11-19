@@ -14,4 +14,6 @@ cat $MYSQL | sed \
 		-e 's/IF NOT EXISTS/ /g' \
 		-e 's/ENGINE=MyISAM *DEFAULT CHARSET=utf8//g' \
 		-e 's/char(255)/varchar(255)/g' \
-		-e 's/\(.*\) [int|INT].* \(NOT NULL\) AUTO_INCREMENT/\1 serial \2/g'
+		-e 's/int(.*)/INTEGER/g' \
+		-e 's/INT(.*)/INTEGER/g' \
+		-e 's/\(.*\) INTEGER.* \(NOT NULL\) AUTO_INCREMENT/\1 serial \2/g'

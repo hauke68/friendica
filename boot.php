@@ -11,7 +11,7 @@ require_once('include/cache.php');
 require_once('library/Mobile_Detect/Mobile_Detect.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
-define ( 'FRIENDICA_VERSION',      '3.0.1527' );
+define ( 'FRIENDICA_VERSION',      '3.0.1531' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
 define ( 'DB_UPDATE_VERSION',      1156      );
 
@@ -437,8 +437,9 @@ if(! class_exists('App')) {
 				if(isset($path) && strlen($path) && ($path != $this->path))
 					$this->path = $path;
 			}
-			if (is_array($argv) && $argc>1 && !x($_SERVER,'SERVER_NAME') && substr(end($argv), 0, 4)=="http" ) {
+			if (is_array($argv) && $argc>1 && substr(end($argv), 0, 4)=="http" ) {
 				$this->set_baseurl(array_pop($argv) );
+				$argc --;
 			}
 
 			set_include_path(
@@ -1846,4 +1847,55 @@ function random_digits($digits) {
 		$rn .= rand(0,9);
 	}
 	return $rn;
+}
+
+function get_cachefile($file, $writemode = true) {
+	$cache = get_config("system","itemcache");
+
+	if ($cache == "")
+		return("");
+
+	if (!is_dir($cache))
+		return("");
+
+	$subfolder = $cache."/".substr($file, 0, 2);
+
+	$cachepath = $subfolder."/".$file;
+
+	if ($writemode) {
+		if (!is_dir($subfolder)) {
+			mkdir($subfolder);
+			chmod($subfolder, 0777);
+		}
+	}
+
+	return($cachepath);
+}
+
+function clear_cache($basepath = "", $path = "") {
+	if ($path == "") {
+		$basepath = get_config('system','itemcache');
+		$path = $basepath;
+	}
+
+	if (($path == "") OR (!is_dir($path)))
+		return;
+
+	if (substr(realpath($path), 0, strlen($basepath)) != $basepath)
+		return;
+
+	$cachetime = (int)get_config('system','itemcache_duration');
+	if ($cachetime == 0)
+		$cachetime = 86400;
+
+	if ($dh = opendir($path)) {
+		while (($file = readdir($dh)) !== false) {
+			$fullpath = $path."/".$file;
+			if ((filetype($fullpath) == "dir") and ($file != ".") and ($file != ".."))
+				clear_cache($basepath, $fullpath);
+			if ((filetype($fullpath) == "file") and filectime($fullpath) < (time() - $cachetime))
+				unlink($fullpath);
+		}
+		closedir($dh);
+	}
 }

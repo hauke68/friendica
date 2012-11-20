@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # This script is for converting friendica's database from MySQL to
 # PostgreSQL.
@@ -10,6 +10,7 @@ MYSQL="$1"
 
 cat $MYSQL | sed \
 		-e 's/`//g' \
+		-e 's/^-.*$//g' \
 		-e 's/ COMMENT .*;$//g' \
 		-e 's/ UNSIGNED//g' \
 		-e 's/ unsigned//g' \
@@ -26,3 +27,6 @@ cat $MYSQL | sed \
 		-e 's/\(.*\) INTEGER.* \(NOT NULL\) AUTO_INCREMENT/\1 SERIAL \2/g' \
 		-e 's/\(.*\) INT \(NOT NULL\) AUTO_INCREMENT/\1 SERIAL \2/g' \
 		-e 's/ datetime/ TIMESTAMP/g' \
+
+
+#		-e 's/[a-z]*-[a-z]*/_/gw mapping.txt' \

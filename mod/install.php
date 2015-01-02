@@ -93,7 +93,7 @@ function install_post(&$a) {
 				$a->data['txt'] = $txt;
 			}
 
-			$errors = load_database($db);
+			$errors = load_database($db, $dbselect);
 
 			if($errors)
 				$a->data['db_failed'] = $errors;
@@ -284,6 +284,7 @@ function install_content(&$a) {
 
 				'$status' => $wizard_status,
 
+				'$dbselect' => $dbselect,
 				'$dbhost' => $dbhost,
 				'$dbuser' => $dbuser,
 				'$dbpass' => $dbpass,
@@ -508,7 +509,7 @@ function load_database_rem($v, $i){
 	}
 }
 
-function load_database($db) {
+function load_database($db, $dbtype = "mysql") {
 
 	require_once("include/dbstructure.php");
 	$errors = update_structure(false, true);

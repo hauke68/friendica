@@ -132,6 +132,9 @@ function print_structure($database) {
 	}
 }
 
+/**
+ * update_structure installs and updates the database tables
+ */
 function update_structure($verbose, $action) {
 	global $a, $db;
 
@@ -151,7 +154,7 @@ function update_structure($verbose, $action) {
 	}
 
 	// Get the definition
-	$definition = db_definition();
+	$definition = db_definition(); // Get all the definitions of the database tables
 
 	// Compare it
 	foreach ($definition AS $name => $structure) {

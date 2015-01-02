@@ -19,6 +19,7 @@
 <input type="hidden" name="phpath" value="{{$phpath}}" />
 <input type="hidden" name="pass" value="3" />
 
+{{include file="field_select.tpl" field=$dbselect}}
 {{include file="field_input.tpl" field=$dbhost}}
 {{include file="field_input.tpl" field=$dbuser}}
 {{include file="field_password.tpl" field=$dbpass}}

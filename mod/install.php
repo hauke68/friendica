@@ -119,7 +119,7 @@ function select_database($current = 'MySQL') {
 	$o .= '<option value="pgsql" '.(($current == 'pgsql') ? "selected" : "").'>PostgreSQL</option>';
 	$o .= '</select>';
 
-return $o;
+	return $o;
 }
 
 

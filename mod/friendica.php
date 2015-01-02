@@ -9,7 +9,10 @@ function friendica_init(&$a) {
 			$sql_extra = sprintf(" AND nickname = '%s' ",dbesc($a->config['admin_nickname']));
 		}
 		if (isset($a->config['admin_email']) && $a->config['admin_email']!=''){
-			$r = q("SELECT username, nickname FROM user WHERE email='%s' $sql_extra", dbesc($a->config['admin_email']));
+	                $adminlist = explode(",", str_replace(" ", "", $a->config['admin_email']));
+
+			//$r = q("SELECT username, nickname FROM user WHERE email='%s' $sql_extra", dbesc($a->config['admin_email']));
+			$r = q("SELECT username, nickname FROM user WHERE email='%s' $sql_extra", dbesc($adminlist[0]));
 			$admin = array(
 				'name' => $r[0]['username'],
 				'profile'=> $a->get_baseurl().'/profile/'.$r[0]['nickname'],
@@ -34,8 +37,12 @@ function friendica_init(&$a) {
 			'admin' => $admin,
 			'site_name' => $a->config['sitename'],
 			'platform' => FRIENDICA_PLATFORM,
-			'info' => ((x($a->config,'info')) ? $a->config['info'] : '')			
+			'info' => ((x($a->config,'info')) ? $a->config['info'] : ''),
 		);
+		
+		//Enable noscrape?
+		if(!get_config('system','disable_noscrape'))
+			$data['no_scrape_url'] = $a->get_baseurl().'/noscrape';
 
 		echo json_encode($data);
 		killme();
@@ -57,7 +64,7 @@ function friendica_content(&$a) {
 
 	$o .= t('Please visit <a href="http://friendica.com">Friendica.com</a> to learn more about the Friendica project.') . '</p><p>';	
 
-	$o .= t('Bug reports and issues: please visit') . ' ' . '<a href="http://bugs.friendica.com">Bugs.Friendica.com</a></p><p>';
+	$o .= t('Bug reports and issues: please visit') . ' ' . '<a href="https://github.com/friendica/friendica/issues?state=open">the bucktracker at github</a></p><p>';
 	$o .= t('Suggestions, praise, donations, etc. - please email "Info" at Friendica - dot com') . '</p>';
 
 	$o .= '<p></p>';

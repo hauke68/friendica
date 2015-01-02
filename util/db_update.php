@@ -14,7 +14,7 @@ $a = new App;
 $lang = get_browser_language();
 load_translation_table($lang);
 
-require_once("dba.php");
+require_once("include/dba.php");
 $db = new dba($db_host, $db_user, $db_pass, $db_data, false);
         unset($db_host, $db_user, $db_pass, $db_data);
 
@@ -26,7 +26,7 @@ echo "New DB VERSION: " . DB_UPDATE_VERSION . "\n";
 
 if($build != DB_UPDATE_VERSION) {
 	echo "Updating database...";
-	check_config($a);
+	check_db($a);
 	echo "Done\n";
 }
 

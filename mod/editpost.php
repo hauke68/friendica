@@ -1,6 +1,6 @@
 <?php
 
-require_once('acl_selectors.php');
+require_once('include/acl_selectors.php');
 
 function editpost_content(&$a) {
 
@@ -28,9 +28,12 @@ function editpost_content(&$a) {
 		return;
 	}
 
-	$plaintext = false;
-	if(local_user() && intval(get_pconfig(local_user(),'system','plaintext')))
-		$plaintext = true;
+/*	$plaintext = false;
+	if( local_user() && intval(get_pconfig(local_user(),'system','plaintext')) || !feature_enabled(local_user(),'richtext') )
+		$plaintext = true;*/
+	$plaintext = true;
+	if( local_user() && feature_enabled(local_user(),'richtext') )
+		$plaintext = false;
 
 
 	$o .= '<h2>' . t('Edit post') . '</h2>';
@@ -82,16 +85,19 @@ function editpost_content(&$a) {
 		}
 	}
 
-	if($mail_enabled) {
+	// I don't think there's any need for the $jotnets when editing the post,
+	// and including them makes it difficult for the JS-free theme, so let's
+	// disable them
+/*	if($mail_enabled) {
        $selected = (($pubmail_enabled) ? ' checked="checked" ' : '');
 		$jotnets .= '<div class="profile-jot-net"><input type="checkbox" name="pubmail_enable"' . $selected . ' value="1" /> '
           	. t("Post to Email") . '</div>';
-	}
+	}*/
 					
 
 
 	call_hooks('jot_tool', $jotplugins);
-	call_hooks('jot_networks', $jotnets);
+	//call_hooks('jot_networks', $jotnets);
 
 	
 	//$tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));	
@@ -100,7 +106,7 @@ function editpost_content(&$a) {
 	$o .= replace_macros($tpl,array(
 		'$return_path' => $_SESSION['return_url'],
 		'$action' => 'item',
-		'$share' => t('Edit'),
+		'$share' => t('Save'),
 		'$upload' => t('Upload photo'),
 		'$shortupload' => t('upload photo'),
 		'$attach' => t('Attach file'),
@@ -127,10 +133,10 @@ function editpost_content(&$a) {
 		'$emailcc' => t('CC: email addresses'),
 		'$public' => t('Public post'),
 		'$jotnets' => $jotnets,
-		'$title' => $itm[0]['title'],
+		'$title' => htmlspecialchars($itm[0]['title']),
 		'$placeholdertitle' => t('Set title'),
 		'$category' => file_tag_file_to_list($itm[0]['file'], 'category'),
-		'$placeholdercategory' => t('Categories (comma-separated list)'),
+		'$placeholdercategory' => (feature_enabled(local_user(),'categories') ? t('Categories (comma-separated list)') : ''),
 		'$emtitle' => t('Example: bob@example.com, mary@example.com'),
 		'$lockstate' => $lockstate,
 		'$acl' => '', // populate_acl((($group) ? $group_acl : $a->user), $celeb),

@@ -9,10 +9,10 @@ function poller_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
@@ -41,11 +41,17 @@ function poller_run(&$argv, &$argc){
 		}
 	}
 
-	$lockpath = get_config('system','lockpath');
+	$lockpath = get_lockpath();
 	if ($lockpath != '') {
-		$pidfile = new pidfile($lockpath, 'poller.lck');
+		$pidfile = new pidfile($lockpath, 'poller');
 		if($pidfile->is_already_running()) {
 			logger("poller: Already running");
+			if ($pidfile->running_time() > 9*60) {
+                                $pidfile->kill();
+                                logger("poller: killed stale process");
+                                // Calling a new instance
+                                proc_run('php','include/poller.php');
+                        }
 			exit;
 		}
 	}
@@ -57,17 +63,21 @@ function poller_run(&$argv, &$argc){
 	load_hooks();
 
 	logger('poller: start');
-	
+
 	// run queue delivery process in the background
 
 	proc_run('php',"include/queue.php");
-	
+
+	// run diaspora photo queue process in the background
+
+	proc_run('php',"include/dsprphotoq.php");
+
 	// expire any expired accounts
 
 	q("UPDATE user SET `account_expired` = 1 where `account_expired` = 0 
 		AND `account_expires_on` != '0000-00-00 00:00:00' 
 		AND `account_expires_on` < UTC_TIMESTAMP() ");
-	
+
 	// delete user and contact records for recently removed accounts
 
 	$r = q("SELECT * FROM `user` WHERE `account_removed` = 1 AND `account_expires_on` < UTC_TIMESTAMP() - INTERVAL 3 DAY");
@@ -77,12 +87,16 @@ function poller_run(&$argv, &$argc){
 			q("DELETE FROM `user` WHERE `uid` = %d", intval($user['uid']));
 		}
 	}
-  
+
 	$abandon_days = intval(get_config('system','account_abandon_days'));
 	if($abandon_days < 1)
 		$abandon_days = 0;
 
-	
+	// Check OStatus conversations
+	check_conversations();
+
+	// To-Do: Regenerate usage statistics
+	// q("ANALYZE TABLE `item`");
 
 	// once daily run birthday_updates and then expire in background
 
@@ -99,20 +113,38 @@ function poller_run(&$argv, &$argc){
 		proc_run('php','include/expire.php');
 	}
 
-	// clear old cache
-	Cache::clear();
+	$last = get_config('system','cache_last_cleared');
 
-	// clear item cache files if they are older than one day
-	$cache = get_config('system','itemcache');
-	if (($cache != '') and is_dir($cache)) {
-		if ($dh = opendir($cache)) {
-			while (($file = readdir($dh)) !== false) {
-				$fullpath = $cache."/".$file;
-				if ((filetype($fullpath) == "file") and filectime($fullpath) < (time() - 86400))
-					unlink($fullpath);
-			}
-			closedir($dh);
+ 	if($last) {
+		$next = $last + (3600); // Once per hour
+		$clear_cache = ($next <= time());
+        } else
+		$clear_cache = true;
+
+	if ($clear_cache) {
+		// clear old cache
+		Cache::clear();
+
+		// clear old item cache files
+		clear_cache();
+
+		// clear cache for photos
+		clear_cache($a->get_basepath(), $a->get_basepath()."/photo");
+
+		// clear smarty cache
+		clear_cache($a->get_basepath()."/view/smarty3/compiled", $a->get_basepath()."/view/smarty3/compiled");
+
+		// clear cache for image proxy
+		if (!get_config("system", "proxy_disabled")) {
+			clear_cache($a->get_basepath(), $a->get_basepath()."/proxy");
+
+			$cachetime = get_config('system','proxy_cache_time');
+			if (!$cachetime) $cachetime = PROXY_DEFAULT_TIME;
+
+			q('DELETE FROM `photo` WHERE `uid` = 0 AND `resource-id` LIKE "pic:%%" AND `created` < NOW() - INTERVAL %d SECOND', $cachetime);
 		}
+
+		set_config('system','cache_last_cleared', time());
 	}
 
 	$manual_id  = 0;
@@ -128,7 +160,7 @@ function poller_run(&$argv, &$argc){
 		$restart = true;
 		$generation = intval($argv[2]);
 		if(! $generation)
-			killme();		
+			killme();
 	}
 
 	if(($argc > 1) && intval($argv[1])) {
@@ -158,9 +190,9 @@ function poller_run(&$argv, &$argc){
 		: '' 
 	);
 
-	$contacts = q("SELECT `contact`.`id` FROM `contact` LEFT JOIN `user` ON `user`.`uid` = `contact`.`uid` 
+	$contacts = q("SELECT `contact`.`id` FROM `contact` INNER JOIN `user` ON `user`.`uid` = `contact`.`uid` 
 		WHERE ( `rel` = %d OR `rel` = %d ) AND `poll` != ''
-		AND NOT `network` IN ( '%s', '%s' )
+		AND NOT `network` IN ( '%s', '%s', '%s' )
 		$sql_extra 
 		AND `self` = 0 AND `contact`.`blocked` = 0 AND `contact`.`readonly` = 0 
 		AND `contact`.`archive` = 0 
@@ -168,7 +200,8 @@ function poller_run(&$argv, &$argc){
 		intval(CONTACT_IS_SHARING),
 		intval(CONTACT_IS_FRIEND),
 		dbesc(NETWORK_DIASPORA),
-		dbesc(NETWORK_FACEBOOK)
+		dbesc(NETWORK_FACEBOOK),
+		dbesc(NETWORK_PUMPIO)
 	);
 
 	if(! count($contacts)) {

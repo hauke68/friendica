@@ -2,12 +2,10 @@
 
 /*
  * Name: Diabook
- * Description: Diabook: report bugs and request here: http://pad.toktan.org/p/diabook or contact me : thomas_bierey@friendica.eu
- * Version: (Version: 1.027)
+ * Description: Diabook: report bugs and request here: http://pad.toktan.org/p/diabook or http://bugs.friendica.com/view_all_bug_page.php
+ * Version: (Version: 1.028)
  * Author:
  */
-
-$a = get_app();
 
 function get_diabook_config($key, $default = false) {
 	if (local_user()) {
@@ -25,8 +23,10 @@ function get_diabook_config($key, $default = false) {
 
 function diabook_init(&$a) {
 
+set_template_engine($a, 'smarty3');
+
 //print diabook-version for debugging
-$diabook_version = "Diabook (Version: 1.027)";
+$diabook_version = "Diabook (Version: 1.028)";
 $a->page['htmlhead'] .= sprintf('<META NAME=generator CONTENT="%s"/>', $diabook_version);
 
 //init css on network and profilepages
@@ -36,7 +36,33 @@ $cssFile = null;
 load_config("diabook");
 load_pconfig(local_user(), "diabook");
 
+
+// adjust nav-bar, depending state of user
+if (local_user() ) {
+	$a->page['htmlhead'] .= '
+	<script>
+	 $(document).ready(function() {
+		$("li#nav-site-linkmenu.nav-menu-icon").attr("style","display: block;");
+		$("li#nav-directory-link.nav-menu").attr("style","margin-right: 0px;");
+		$("li#nav-home-link.nav-menu").attr("style","display: block;margin-right: 8px;");
+	});
+	</script>';
+	}
+
+if ($a->argv[0] == "profile" && $a->argv[1] != $a->user['nickname'] ) {
+	$a->page['htmlhead'] .= '
+	<script>
+	 $(document).ready(function() {
+		$("li#nav-site-linkmenu.nav-menu-icon").attr("style","display: block;");
+		$("li#nav-directory-link.nav-menu").attr("style","margin-right: 0px;");
+		$("li#nav-home-link.nav-menu").attr("style","display: block;margin-right: 8px;");
+	});
+	</script>';
+	}
+
+
 //get statuses of boxes at right-hand-column
+$close_pages      = get_diabook_config( "close_pages", 1 );
 $close_profiles   = get_diabook_config( "close_profiles", 0 );
 $close_helpers    = get_diabook_config( "close_helpers", 0 );
 $close_services   = get_diabook_config( "close_services", 0 );
@@ -44,7 +70,6 @@ $close_friends    = get_diabook_config( "close_friends", 0 );
 $close_lastusers  = get_diabook_config( "close_lastusers", 0 );
 $close_lastphotos = get_diabook_config( "close_lastphotos", 0 );
 $close_lastlikes  = get_diabook_config( "close_lastlikes", 0 );
-$close_twitter    = get_diabook_config( "close_twitter", 1 );
 $close_mapquery   = get_diabook_config( "close_mapquery", 1 );
 
 //get resolution (wide/normal)
@@ -69,6 +94,18 @@ if ($color=="pink") $color_path = "/diabook-pink/";
 if ($color=="green") $color_path = "/diabook-green/";
 if ($color=="dark") $color_path = "/diabook-dark/";
 
+	// remove doubled checkboxes at contacts-edit-page
+	if ($a->argv[0] === "contacts" && $a->argv[1] != NULL && local_user()){
+	$a->page['htmlhead'] .= '
+	<script>
+	 $(document).ready(function() {
+		$("span.group_unselected").attr("style","display: none;");
+		$("span.group_selected").attr("style","display: none;");
+		$("input.unticked.action").attr("style","float: left; margin-top: 5px;-moz-appearance: none;");
+		$("li.menu-profile-list").attr("style","min-height: 22px;");
+	});
+	</script>';
+	}
 
 	//build personal menue at lefthand-col (id="profile_side") and boxes at right-hand-col at networkpages
 	if ($a->argv[0] === "network" && local_user()){
@@ -101,9 +138,9 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 
 	}
 
-	$ccCookie = $close_pages + $close_mapquery + $close_profiles + $close_helpers + $close_services + $close_friends + $close_twitter + $close_lastusers + $close_lastphotos + $close_lastlikes;
+	$ccCookie = $close_pages + $close_mapquery + $close_profiles + $close_helpers + $close_services + $close_friends + $close_lastusers + $close_lastphotos + $close_lastlikes;
 	//if all boxes closed, dont build right-hand-col and dont use special css
-	if($ccCookie != "10") {
+	if($ccCookie != "9") {
 	// COMMUNITY
 	diabook_community_info();
 
@@ -117,7 +154,7 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 
 	//build boxes at right_aside at profile pages
 	if ($a->argv[0].$a->argv[1] === "profile".$a->user['nickname']){
-	if($ccCookie != "10") {
+	if($ccCookie != "9") {
 	// COMMUNITY
 	diabook_community_info();
 
@@ -136,17 +173,13 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$imageresizeJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/js/jquery.ae.image.resize.min.js";
 	$a->page['htmlhead'] .= sprintf('<script type="text/javascript" src="%s" ></script>', $imageresizeJS);
 	//load jquery.ui.js
-	if($ccCookie != "10") {
-	$jqueryuiJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/js/jquery-ui-1.8.20.custom.min.js";
+	if($ccCookie != "9") {
+	$jqueryuiJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/js/jquery-ui.min.js";
 	$a->page['htmlhead'] .= sprintf('<script type="text/javascript" src="%s" ></script>', $jqueryuiJS);
-	$jqueryuicssJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/jquery-ui-1.8.20.custom.css";
+	$jqueryuicssJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/jquery-ui.min.css";
 	$a->page['htmlhead'] .= sprintf('<link rel="stylesheet" type="text/css" href="%s" />', $jqueryuicssJS);
 	}
-	//load jquery.twitter.search.js
-	if($close_twitter != "1") {
-	$twitterJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/js/jquery.twitter.search.js";
-	$a->page['htmlhead'] .= sprintf('<script type="text/javascript" src="%s" ></script>', $twitterJS);
-	}
+	
 	//load jquery.mapquery.js
 	if($close_mapquery != "1") {
 	$mqtmplJS = $a->get_baseurl($ssl_state)."/view/theme/diabook/js/jquery.tmpl.js";
@@ -168,10 +201,9 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$a->page['htmlhead'] .= '
 	<script>
 	 $(function() {
-		$("a.lightbox").fancybox(); // Select all links with lightbox class
-	 	$("a#twittersettings-link").fancybox({onClosed: function() { $("#twittersettings").attr("style","display: none;");}} );
-	   $("a#mapcontrol-link").fancybox({onClosed: function() { $("#mapcontrol").attr("style","display: none;");}} );
-	   $("a#closeicon").fancybox({onClosed: function() { $("#boxsettings").attr("style","display: none;");}} );
+		$("a.lightbox").colorbox({maxHeight:"90%"}); // Select all links with lightbox class
+		$("a#mapcontrol-link").colorbox({inline:true,onClosed: function() { $("#mapcontrol").attr("style","display: none;");}} );
+		$("a#closeicon").colorbox({inline:true,onClosed: function() { $("#boxsettings").attr("style","display: none;");}} );
 	 	});
 
 	 $(window).load(function() {
@@ -233,25 +265,7 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 		};
 		</script>';
 	}
-	//check if twitterbox is active and print
-	if($close_twitter != "1") {
-		$TSearchTerm = get_diabook_config( "TSearchTerm", "friendica" );
-		$a->page['htmlhead'] .= '
-		<script>
-		$(function() {
-		$("#twitter").twitterSearch({
-		term: "'.$TSearchTerm.'",
-		animInSpeed: 250,
-		bird:    false,
-		avatar:  false,
-		colorExterior: "#fff",
-		timeout: 10000    	});
-		});
-		function open_twittersettings() {
-		$("div#twittersettings").attr("style","display: block;");
-		};
-		</script>';}
-
+	
 	//check if community_home-plugin is activated and change css.. we need this, that the submit-wrapper doesn't overlay the login-panel if communityhome-plugin is active
 	$nametocheck = "communityhome";
 	$r = q("select id from addon where name = '%s' and installed = 1", dbesc($nametocheck));
@@ -291,10 +305,15 @@ if ($color=="dark") $color_path = "/diabook-dark/";
   	});
 	</script>';
 
-	if($ccCookie != "10") {
+	if($ccCookie != "9") {
 	$a->page['htmlhead'] .= '
 	<script>
 	$("right_aside").ready(function(){
+
+	if('.$close_pages.')
+		{
+		document.getElementById( "close_pages" ).style.display = "none";
+			};
 
 	if('.$close_mapquery.')
 		{
@@ -319,11 +338,6 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	if('.$close_friends.')
 		{
 		document.getElementById( "close_friends" ).style.display = "none";
-			};
-
-	if('.$close_twitter.')
-		{
-		document.getElementById( "close_twitter" ).style.display = "none";
 			};
 
 	if('.$close_lastusers.')
@@ -362,6 +376,7 @@ if ($color=="dark") $color_path = "/diabook-dark/";
  function diabook_community_info() {
 	$a = get_app();
 
+	$close_pages      = get_diabook_config( "close_pages", 1 );
 	$close_profiles   = get_diabook_config( "close_profiles", 0 );
 	$close_helpers    = get_diabook_config( "close_helpers", 0 );
 	$close_services   = get_diabook_config( "close_services", 0 );
@@ -369,7 +384,6 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$close_lastusers  = get_diabook_config( "close_lastusers", 0 );
 	$close_lastphotos = get_diabook_config( "close_lastphotos", 0 );
 	$close_lastlikes  = get_diabook_config( "close_lastlikes", 0 );
-	$close_twitter    = get_diabook_config( "close_twitter", 1 );
 	$close_mapquery   = get_diabook_config( "close_mapquery", 1 );
 
 	// comunity_profiles
@@ -378,16 +392,16 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$aside['$comunity_profiles_items'] = array();
 	$r = q("select gcontact.* from gcontact left join glink on glink.gcid = gcontact.id
 			  where glink.cid = 0 and glink.uid = 0 order by rand() limit 9");
-	$tpl = file_get_contents( dirname(__file__).'/ch_directory_item.tpl');
+	$tpl = get_markup_template('ch_directory_item.tpl');
 	if(count($r)) {
 		$photo = 'photo';
 		foreach($r as $rr) {
 			$profile_link = $a->get_baseurl() . '/profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['profile_uid']);
 			$entry = replace_macros($tpl,array(
 				'$id' => $rr['id'],
-				'$profile-link' => zrl($rr['url']),
+				'$profile_link' => zrl($rr['url']),
 				'$photo' => $rr[$photo],
-				'$alt-text' => $rr['name'],
+				'$alt_text' => $rr['name'],
 			));
 			$aside['$comunity_profiles_items'][] = $entry;
 		}
@@ -407,16 +421,16 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 		0,
 		9
 	);
-	$tpl = file_get_contents( dirname(__file__).'/ch_directory_item.tpl');
+	$tpl = get_markup_template('ch_directory_item.tpl');
 	if(count($r)) {
 		$photo = 'thumb';
 		foreach($r as $rr) {
 			$profile_link = $a->get_baseurl() . '/profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['profile_uid']);
 			$entry = replace_macros($tpl,array(
 				'$id' => $rr['id'],
-				'$profile-link' => $profile_link,
+				'$profile_link' => $profile_link,
 				'$photo' => $a->get_cached_avatar_image($rr[$photo]),
-				'$alt-text' => $rr['name'],
+				'$alt_text' => $rr['name'],
 			));
 			$aside['$lastusers_items'][] = $entry;
 		}
@@ -486,16 +500,16 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 				dbesc(t('Profile Photos'))
 				);
 		if(count($r)) {
-		$tpl = file_get_contents( dirname(__file__).'/ch_directory_item.tpl');
+		$tpl = get_markup_template('ch_directory_item.tpl');
 		foreach($r as $rr) {
 			$photo_page = $a->get_baseurl() . '/photos/' . $rr['nickname'] . '/image/' . $rr['resource-id'];
 			$photo_url = $a->get_baseurl() . '/photo/' .  $rr['resource-id'] . '-' . $rr['scale'] .'.jpg';
 
 			$entry = replace_macros($tpl,array(
 				'$id' => $rr['id'],
-				'$profile-link' => $photo_page,
+				'$profile_link' => $photo_page,
 				'$photo' => $photo_url,
-				'$alt-text' => $rr['username']." : ".$rr['desc'],
+				'$alt_text' => $rr['username']." : ".$rr['desc'],
 			));
 
 			$aside['$photos_items'][] = $entry;
@@ -523,6 +537,40 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$aside['$nv'] = $nv;
 	}}
 
+   //Community_Pages at right_aside
+   if($close_pages != "1") {
+   if(local_user()) {
+   $page = '
+			<h3 style="margin-top:0px;">'.t("Community Pages").'<a id="closeicon" href="#boxsettings" onClick="open_boxsettings(); return false;" style="text-decoration:none;" class="icon close_box" title="'.t("Settings").'"></a></h3>
+			<div id=""><ul style="margin-left: 7px;margin-top: 0px;padding-left: 0px;padding-top: 0px;">';
+
+	$pagelist = array();
+
+	$contacts = q("SELECT `id`, `url`, `name`, `micro`FROM `contact`
+			WHERE `network`= 'dfrn' AND `forum` = 1 AND `uid` = %d
+			ORDER BY `name` ASC",
+			intval($a->user['uid'])
+	);
+
+	$pageD = array();
+
+	// Look if the profile is a community page
+	foreach($contacts as $contact) {
+		$pageD[] = array("url"=>$contact["url"], "name"=>$contact["name"], "id"=>$contact["id"], "micro"=>$contact['micro']);
+	};
+
+
+	$contacts = $pageD;
+
+	foreach($contacts as $contact) {
+		$page .= '<li style="list-style-type: none;" class="tool"><img height="20" width="20" style="float: left; margin-right: 3px;" src="' . $contact['micro'] .'" alt="' . $contact['url'] . '" /> <a href="'.$a->get_baseurl().'/redir/'.$contact["id"].'" style="margin-top: 2px; word-wrap: break-word; width: 132px;" title="' . $contact['url'] . '" class="label" target="external-link">'.
+				$contact["name"]."</a></li>";
+	}
+	$page .= '</ul></div>';
+	//if (sizeof($contacts) > 0)
+		$aside['$page'] = $page;
+	}}
+  //END Community Page
 
    //mapquery
 
@@ -559,22 +607,9 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$aside['$con_services'] = $con_services;
 	}
    //end connectable services
-   //twitter
-   if($close_twitter != "1") {
-   $twitter = array();
-	$twitter['title'] = Array("", "<a id='twittersettings-link' href='#twittersettings' style='text-decoration:none;' onclick='open_twittersettings(); return false;'>".t('Last Tweets')."</a>", "", "");
-	$aside['$twitter'] = $twitter;
-	$TSearchTerm = get_pconfig(local_user(), 'diabook', 'TSearchTerm' );
-	$aside['$TSearchTerm'] = array('diabook_TSearchTerm', t('Set twitter search term'), $TSearchTerm, '', $TSearchTerm);
-	$baseurl = $a->get_baseurl($ssl_state);
-	$aside['$baseurl'] = $baseurl;
-	if (isset($_POST['diabook-settings-sub']) && $_POST['diabook-settings-sub']!=''){
-		set_pconfig(local_user(), 'diabook', 'TSearchTerm', $_POST['diabook_TSearchTerm']);
-		header("Location: network");
-		}
-	}
-   //end twitter
-   if($ccCookie != "10") {
+   
+   if($ccCookie != "9") {
+	$close_pages      = get_diabook_config( "close_pages", 1 );
 	$close_profiles   = get_diabook_config( "close_profiles", 0 );
 	$close_helpers    = get_diabook_config( "close_helpers", 0 );
 	$close_services   = get_diabook_config( "close_services", 0 );
@@ -582,17 +617,16 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$close_lastusers  = get_diabook_config( "close_lastusers", 0 );
 	$close_lastphotos = get_diabook_config( "close_lastphotos", 0 );
 	$close_lastlikes  = get_diabook_config( "close_lastlikes", 0 );
-	$close_twitter    = get_diabook_config( "close_twitter", 1 );
 	$close_mapquery   = get_diabook_config( "close_mapquery", 1 );
 	$close_or_not = array('1'=>t("don't show"),	'0'=>t("show"),);
 	$boxsettings['title'] = Array("", t('Show/hide boxes at right-hand column:'), "", "");
 	$aside['$boxsettings'] = $boxsettings;
+	$aside['$close_pages'] = array('diabook_close_pages', t('Community Pages'), $close_pages, '', $close_or_not);
 	$aside['$close_mapquery'] = array('diabook_close_mapquery', t('Earth Layers'), $close_mapquery, '', $close_or_not);
 	$aside['$close_profiles'] = array('diabook_close_profiles', t('Community Profiles'), $close_profiles, '', $close_or_not);
 	$aside['$close_helpers'] = array('diabook_close_helpers', t('Help or @NewHere ?'), $close_helpers, '', $close_or_not);
 	$aside['$close_services'] = array('diabook_close_services', t('Connect Services'), $close_services, '', $close_or_not);
 	$aside['$close_friends'] = array('diabook_close_friends', t('Find Friends'), $close_friends, '', $close_or_not);
-	$aside['$close_twitter'] = array('diabook_close_twitter', t('Last Tweets'), $close_twitter, '', $close_or_not);
 	$aside['$close_lastusers'] = array('diabook_close_lastusers', t('Last users'), $close_lastusers, '', $close_or_not);
 	$aside['$close_lastphotos'] = array('diabook_close_lastphotos', t('Last photos'), $close_lastphotos, '', $close_or_not);
 	$aside['$close_lastlikes'] = array('diabook_close_lastlikes', t('Last likes'), $close_lastlikes, '', $close_or_not);
@@ -600,24 +634,26 @@ if ($color=="dark") $color_path = "/diabook-dark/";
    $baseurl = $a->get_baseurl($ssl_state);
    $aside['$baseurl'] = $baseurl;
    if (isset($_POST['diabook-settings-box-sub']) && $_POST['diabook-settings-box-sub']!=''){
+		set_pconfig(local_user(), 'diabook', 'close_pages', $_POST['diabook_close_pages']);
 		set_pconfig(local_user(), 'diabook', 'close_mapquery', $_POST['diabook_close_mapquery']);
 		set_pconfig(local_user(), 'diabook', 'close_profiles', $_POST['diabook_close_profiles']);
 		set_pconfig(local_user(), 'diabook', 'close_helpers', $_POST['diabook_close_helpers']);
 		set_pconfig(local_user(), 'diabook', 'close_services', $_POST['diabook_close_services']);
 		set_pconfig(local_user(), 'diabook', 'close_friends', $_POST['diabook_close_friends']);
-		set_pconfig(local_user(), 'diabook', 'close_twitter', $_POST['diabook_close_twitter']);
 		set_pconfig(local_user(), 'diabook', 'close_lastusers', $_POST['diabook_close_lastusers']);
 		set_pconfig(local_user(), 'diabook', 'close_lastphotos', $_POST['diabook_close_lastphotos']);
 		set_pconfig(local_user(), 'diabook', 'close_lastlikes', $_POST['diabook_close_lastlikes']);
 		}
 	}
-   $close = t('Settings');
-   $aside['$close'] = $close;
-   //get_baseurl
-   $url = $a->get_baseurl($ssl_state);
-   $aside['$url'] = $url;
+	$close = t('Settings');
+	$aside['$close'] = $close;
+
+	//get_baseurl
+	$url = $a->get_baseurl($ssl_state);
+	$aside['$url'] = $url;
+
 	//print right_aside
-	$tpl = file_get_contents(dirname(__file__).'/communityhome.tpl');
+	$tpl = get_markup_template('communityhome.tpl');
 	$a->page['right_aside'] = replace_macros($tpl, $aside);
 
  }
@@ -628,7 +664,7 @@ if ($color=="dark") $color_path = "/diabook-dark/";
 	$a = get_app();
 	$baseurl = $a->get_baseurl($ssl_state);
 	$bottom['$baseurl'] = $baseurl;
-	$tpl = file_get_contents(dirname(__file__) . '/bottom.tpl');
+	$tpl = get_markup_template('bottom.tpl');
 	$a->page['footer'] = $a->page['footer'].replace_macros($tpl, $bottom);
  }
 

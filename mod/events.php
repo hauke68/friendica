@@ -28,7 +28,7 @@ function events_post(&$a) {
 	$adjust   = intval($_POST['adjust']);
 	$nofinish = intval($_POST['nofinish']);
 
-	// The default setting for the `private` field in event_store() is false, so mirror that	
+	// The default setting for the `private` field in event_store() is false, so mirror that
 	$private_event = false;
 
 
@@ -142,25 +142,35 @@ function events_content(&$a) {
 	}
 
 	if(($a->argc > 2) && ($a->argv[1] === 'ignore') && intval($a->argv[2])) {
-		$r = q("update event set ignore = 1 where id = %d and uid = %d limit 1",
+		$r = q("update event set ignore = 1 where id = %d and uid = %d",
 			intval($a->argv[2]),
 			intval(local_user())
 		);
 	}
 
 	if(($a->argc > 2) && ($a->argv[1] === 'unignore') && intval($a->argv[2])) {
-		$r = q("update event set ignore = 0 where id = %d and uid = %d limit 1",
+		$r = q("update event set ignore = 0 where id = %d and uid = %d",
 			intval($a->argv[2]),
 			intval(local_user())
 		);
 	}
 
 
+	$editselect = 'none';
+	if( feature_enabled(local_user(), 'richtext') )
+		$editselect = 'textareas';
+
 	$htpl = get_markup_template('event_head.tpl');
-	$a->page['htmlhead'] .= replace_macros($htpl,array('$baseurl' => $a->get_baseurl()));
+	$a->page['htmlhead'] .= replace_macros($htpl,array(
+		'$baseurl' => $a->get_baseurl(),
+		'$editselect' => $editselect
+	));
 
 	$etpl = get_markup_template('event_end.tpl');
-	$a->page['end'] .= replace_macros($etpl,array('$baseurl' => $a->get_baseurl()));
+	$a->page['end'] .= replace_macros($etpl,array(
+		'$baseurl' => $a->get_baseurl(),
+		'$editselect' => $editselect
+	));
 
 	$o ="";
 	// tabs
@@ -250,12 +260,14 @@ function events_content(&$a) {
 			$r = q("SELECT `event`.*, `item`.`id` AS `itemid`,`item`.`plink`,
 				`item`.`author-name`, `item`.`author-avatar`, `item`.`author-link` FROM `event` LEFT JOIN `item` ON `item`.`event-id` = `event`.`id` 
 				WHERE `event`.`uid` = %d and event.ignore = %d
-				AND (( `adjust` = 0 AND `finish` >= '%s' AND `start` <= '%s' ) 
-				OR  (  `adjust` = 1 AND `finish` >= '%s' AND `start` <= '%s' )) ",
+				AND (( `adjust` = 0 AND ( `finish` >= '%s' OR ( nofinish AND start >= '%s' ) ) AND `start` <= '%s' ) 
+				OR  (  `adjust` = 1 AND ( `finish` >= '%s' OR ( nofinish AND start >= '%s' ) ) AND `start` <= '%s' )) ",
 				intval(local_user()),
 				intval($ignored),
 				dbesc($start),
+				dbesc($start),
 				dbesc($finish),
+				dbesc($adjust_start),
 				dbesc($adjust_start),
 				dbesc($adjust_finish)
 			);
@@ -341,6 +353,17 @@ function events_content(&$a) {
 //				$tpl = get_markup_template("events.tpl");
 //			}
 		}
+
+		// Get rid of dashes in key names, Smarty3 can't handle them
+		foreach($events as $key => $event) {
+			$event_item = array();
+			foreach($event['item'] as $k => $v) {
+				$k = str_replace('-','_',$k);
+				$event_item[$k] = $v;
+			}
+			$events[$key]['item'] = $event_item;
+		}
+
 		$o = replace_macros($tpl, array(
 			'$baseurl'	=> $a->get_baseurl(),
 			'$tabs'		=> $tabs,
@@ -349,16 +372,16 @@ function events_content(&$a) {
 			'$previus'	=> array($a->get_baseurl()."/events/$prevyear/$prevmonth",t('Previous'),'',''),
 			'$next'		=> array($a->get_baseurl()."/events/$nextyear/$nextmonth",t('Next'),'',''),
 			'$calendar' => cal($y,$m,$links, ' eventcal'),
-			
+
 			'$events'	=> $events,
-			
-			
+
+
 		));
-		
+
 		if (x($_GET,'id')){ echo $o; killme(); }
-		
+
 		return $o;
-		
+
 	}
 
 	if($mode === 'edit' && $event_id) {

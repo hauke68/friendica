@@ -10,10 +10,10 @@ function gprobe_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
@@ -37,6 +37,8 @@ function gprobe_run(&$argv, &$argc){
 		dbesc(normalise_link($url))
 	);
 
+	logger("gprobe start for ".normalise_link($url), LOGGER_DEBUG);
+
 	if(! count($r)) {
 
 		$arr = probe_url($url);
@@ -55,7 +57,8 @@ function gprobe_run(&$argv, &$argc){
 	}
 	if(count($r))
 		poco_load(0,0,$r[0]['id'], str_replace('/profile/','/poco/',$r[0]['url']));
-		
+
+	logger("gprobe end for ".normalise_link($url), LOGGER_DEBUG);
 	return;
 }
 

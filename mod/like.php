@@ -105,19 +105,22 @@ function like_content(&$a) {
 	}
 
 
-	$r = q("SELECT * FROM `item` WHERE `verb` = '%s' AND `deleted` = 0 
-		AND `contact-id` = %d AND ( `parent` = '%s' OR `parent-uri` = '%s' OR `thr-parent` = '%s') LIMIT 1",
-		dbesc($activity),
-		intval($contact['id']),
-		dbesc($item_id),
-		dbesc($item_id),
-		dbesc($item['uri'])
+	// See if we've been passed a return path to redirect to
+	$return_path = ((x($_REQUEST,'return')) ? $_REQUEST['return'] : '');
+
+
+	$r = q("SELECT `id`, `guid` FROM `item` WHERE `verb` = '%s' AND `deleted` = 0
+		AND `contact-id` = %d AND `uid` = %d
+		AND (`parent` = '%s' OR `parent-uri` = '%s' OR `thr-parent` = '%s') LIMIT 1",
+		dbesc($activity), intval($contact['id']), intval($owner_uid),
+		dbesc($item_id), dbesc($item_id), dbesc($item['uri'])
 	);
+
 	if(count($r)) {
 		$like_item = $r[0];
 
 		// Already voted, undo it
-		$r = q("UPDATE `item` SET `deleted` = 1, `unseen` = 1, `changed` = '%s' WHERE `id` = %d LIMIT 1",
+		$r = q("UPDATE `item` SET `deleted` = 1, `unseen` = 1, `changed` = '%s' WHERE `id` = %d",
 			dbesc(datetime_convert()),
 			intval($like_item['id'])
 		);
@@ -133,17 +136,18 @@ function like_content(&$a) {
 		// Save the author information for the unlike in case we need to relay to Diaspora
 		store_diaspora_like_retract_sig($activity, $item, $like_item, $contact);
 
-
 //		proc_run('php',"include/notifier.php","like","$post_id"); // $post_id isn't defined here!
 		$like_item_id = $like_item['id'];
 		proc_run('php',"include/notifier.php","like","$like_item_id");
-		return;
+
+		like_content_return($a->get_baseurl(), $return_path);
+		return; // NOTREACHED
 	}
 
 	$uri = item_new_uri($a->get_hostname(),$owner_uid);
 
 	$post_type = (($item['resource-id']) ? t('photo') : t('status'));
-	$objtype = (($item['resource-id']) ? ACTIVITY_OBJ_PHOTO : ACTIVITY_OBJ_NOTE ); 
+	$objtype = (($item['resource-id']) ? ACTIVITY_OBJ_PHOTO : ACTIVITY_OBJ_NOTE );
 	$link = xmlify('<link rel="alternate" type="text/html" href="' . $a->get_baseurl() . '/display/' . $owner['nickname'] . '/' . $item['id'] . '" />' . "\n") ;
 	$body = $item['body'];
 
@@ -201,19 +205,18 @@ EOT;
 	$arr['unseen'] = 1;
 	$arr['last-child'] = 0;
 
-	$post_id = item_store($arr);	
+	$post_id = item_store($arr);
 
 	if(! $item['visible']) {
-		$r = q("UPDATE `item` SET `visible` = 1 WHERE `id` = %d AND `uid` = %d LIMIT 1",
+		$r = q("UPDATE `item` SET `visible` = 1 WHERE `id` = %d AND `uid` = %d",
 			intval($item['id']),
 			intval($owner_uid)
 		);
-	}			
+	}
 
 
 	// Save the author information for the like in case we need to relay to Diaspora
 	store_diaspora_like_sig($activity, $post_type, $contact, $post_id);
-
 
 	$arr['id'] = $post_id;
 
@@ -221,8 +224,26 @@ EOT;
 
 	proc_run('php',"include/notifier.php","like","$post_id");
 
-	killme();
+	like_content_return($a->get_baseurl(), $return_path);
+	killme(); // NOTREACHED
 //	return; // NOTREACHED
+}
+
+
+// Decide how to return. If we were called with a 'return' argument,
+// then redirect back to the calling page. If not, just quietly end
+
+function like_content_return($baseurl, $return_path) {
+
+	if($return_path) {
+		$rand = '_=' . time();
+		if(strpos($return_path, '?')) $rand = "&$rand";
+		else $rand = "?$rand";
+
+		goaway($baseurl . "/" . $return_path . $rand);
+	}
+
+	killme();
 }
 
 

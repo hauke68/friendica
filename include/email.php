@@ -82,10 +82,6 @@ function email_get_msg($mbox,$uid, $reply) {
 	if(! $struc)
 		return $ret;
 
-	// for testing purposes: Collect imported mails
-	// $file = tempnam("/tmp/friendica2/", "mail-in-");
-	// file_put_contents($file, json_encode($struc));
-
 	if(! $struc->parts) {
 		$ret['body'] = email_get_part($mbox,$uid,$struc,0, 'html');
 		$html = $ret['body'];
@@ -137,10 +133,6 @@ function email_get_part($mbox,$uid,$p,$partno, $subtype) {
 	$data = ($partno)
 		? @imap_fetchbody($mbox,$uid,$partno, FT_UID|FT_PEEK)
 	: @imap_body($mbox,$uid,FT_UID|FT_PEEK);
-
-	// for testing purposes: Collect imported mails
-	// $file = tempnam("/tmp/friendica2/", "mail-body-");
-	// file_put_contents($file, $data);
 
 	// Any part may be encoded, even plain text messages, so check everything.
 	if ($p->encoding==4)
@@ -257,6 +249,12 @@ function email_header_encode($in_str, $charset) {
     return $out_str;
 }
 
+/**
+ * email_send is used by NETWORK_EMAIL and NETWORK_EMAIL2 code
+ * (not to notify the user, but to send items to email contacts
+ *
+ * TODO: this could be changed to use the Emailer class
+ */
 function email_send($addr, $subject, $headers, $item) {
 	//$headers .= 'MIME-Version: 1.0' . "\n";
 	//$headers .= 'Content-Type: text/html; charset=UTF-8' . "\n";

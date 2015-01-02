@@ -160,25 +160,35 @@ function content_content(&$a, $update = 0) {
 
 	$sql_extra2 = (($nouveau) ? '' : " AND `item`.`parent` = `item`.`id` ");
 	$sql_extra3 = (($nouveau) ? '' : $sql_extra3);
+	$sql_table = "`item`";
 
 	if(x($_GET,'search')) {
 		$search = escape_tags($_GET['search']);
-		if (get_config('system','use_fulltext_engine')) {
-			if(strpos($search,'#') === 0)
-				$sql_extra .= sprintf(" AND (MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode)) ",
-					dbesc(protect_sprintf($search))
-				);
-			else
-				$sql_extra .= sprintf(" AND (MATCH(`item`.`body`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode)) ",
-					dbesc(protect_sprintf($search)),
-					dbesc(protect_sprintf($search))
-				);
-		} else {
-			$sql_extra .= sprintf(" AND ( `item`.`body` like '%s' OR `item`.`tag` like '%s' ) ",
-					dbesc(protect_sprintf('%' . $search . '%')),
-					dbesc(protect_sprintf('%]' . $search . '[%'))
-			);
+
+		if(strpos($search,'#') === 0) {
+			$tag = true;
+			$search = substr($search,1);
 		}
+
+		if (get_config('system','only_tag_search'))
+			$tag = true;
+
+		if($tag) {
+			//$sql_extra = sprintf(" AND `term`.`term` = '%s' AND `term`.`otype` = %d AND `term`.`type` = %d ",
+			//	dbesc(protect_sprintf($search)), intval(TERM_OBJ_POST), intval(TERM_HASHTAG));
+			//$sql_table = "`term` INNER JOIN `item` ON `item`.`id` = `term`.`oid` AND `item`.`uid` = `term`.`uid` ";
+
+			$sql_extra = "";
+			$sql_table = sprintf("`item` INNER JOIN (SELECT `oid` FROM `term` WHERE `term` = '%s' AND `otype` = %d AND `type` = %d AND `uid` = %d ORDER BY `tid` DESC) AS `term` ON `item`.`id` = `term`.`oid` ",
+				dbesc(protect_sprintf($search)), intval(TERM_OBJ_POST), intval(TERM_HASHTAG), intval(local_user()));
+
+		} else {
+			if (get_config('system','use_fulltext_engine'))
+				$sql_extra = sprintf(" AND MATCH (`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode) ", dbesc(protect_sprintf($search)));
+			else
+				$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
+		}
+
 	}
 	if(strlen($file)) {
 		$sql_extra .= file_tag_file_query('item',unxmlify($file));
@@ -189,38 +199,27 @@ function content_content(&$a, $update = 0) {
 		$myurl = substr($myurl,strpos($myurl,'://')+3);
 		$myurl = str_replace('www.','',$myurl);
 		$diasp_url = str_replace('/profile/','/u/',$myurl);
-		if (get_config('system','use_fulltext_engine'))
-			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where (MATCH(`author-link`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(`tag`) AGAINST ('".'"%s"'."' in boolean mode) or MATCH(tag) AGAINST ('".'"%s"'."' in boolean mode))) ",
-				dbesc(protect_sprintf($myurl)),
-				dbesc(protect_sprintf($myurl)),
-				dbesc(protect_sprintf($diasp_url))
-			);
-		else
-			$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where ( `author-link` like '%s' or `tag` like '%s' or tag like '%s' )) ",
-				dbesc(protect_sprintf('%' . $myurl)),
-				dbesc(protect_sprintf('%' . $myurl . ']%')),
-				dbesc(protect_sprintf('%' . $diasp_url . ']%'))
-			);
 
+		$sql_extra .= sprintf(" AND `item`.`parent` IN (SELECT distinct(`parent`) from item where `author-link` IN ('https://%s', 'http://%s') OR `mention`)",
+			dbesc(protect_sprintf($myurl)),
+			dbesc(protect_sprintf($myurl))
+		);
 	}
 
 	$pager_sql = sprintf(" LIMIT %d, %d ",intval($a->pager['start']), intval($a->pager['itemspage']));
 
 
-
-
 	if($nouveau) {
 		// "New Item View" - show all items unthreaded in reverse created date order
 
-		$items = q("SELECT `item`.*, `item`.`id` AS `item_id`, 
+		$items = q("SELECT `item`.*, `item`.`id` AS `item_id`,
 			`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`rel`, `contact`.`writable`,
 			`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 			`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-			FROM `item`, `contact`
-			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 
+			FROM $sql_table INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+			WHERE `item`.`uid` = %d AND `item`.`visible` = 1
 			AND `item`.`deleted` = 0 and `item`.`moderated` = 0
 			$simple_update
-			AND `contact`.`id` = `item`.`contact-id`
 			AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			$sql_extra $sql_nets
 			ORDER BY `item`.`received` DESC $pager_sql ",
@@ -241,7 +240,7 @@ function content_content(&$a, $update = 0) {
 		$start = dba_timer();
 
 		$r = q("SELECT `item`.`id` AS `item_id`, `contact`.`uid` AS `contact_uid`
-			FROM `item` LEFT JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+			FROM $sql_table INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 			WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
 			AND `item`.`moderated` = 0 AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 			AND `item`.`parent` = `item`.`id`
@@ -268,9 +267,9 @@ function content_content(&$a, $update = 0) {
 				`contact`.`name`, `contact`.`photo`, `contact`.`url`, `contact`.`alias`, `contact`.`rel`, `contact`.`writable`,
 				`contact`.`network`, `contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
 				`contact`.`id` AS `cid`, `contact`.`uid` AS `contact-uid`
-				FROM `item`, `contact`
+				FROM $sql_table INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 				WHERE `item`.`uid` = %d AND `item`.`visible` = 1 AND `item`.`deleted` = 0
-				AND `item`.`moderated` = 0 AND `contact`.`id` = `item`.`contact-id`
+				AND `item`.`moderated` = 0
 				AND `contact`.`blocked` = 0 AND `contact`.`pending` = 0
 				AND `item`.`parent` IN ( %s )
 				$sql_extra ",
@@ -287,7 +286,7 @@ function content_content(&$a, $update = 0) {
 		}
 	}
 
-	
+
 	logger('parent dba_timer: ' . sprintf('%01.4f',$first - $start));
 	logger('child  dba_timer: ' . sprintf('%01.4f',$second - $first));
 
@@ -298,7 +297,7 @@ function content_content(&$a, $update = 0) {
 
 	$o = render_content($a,$items,$mode,false);
 
-	
+
 	header('Content-type: application/json');
 	echo json_encode($o);
 	killme();
@@ -308,8 +307,8 @@ function content_content(&$a, $update = 0) {
 
 function render_content(&$a, $items, $mode, $update, $preview = false) {
 
-
-	require_once('bbcode.php');
+	require_once('include/bbcode.php');
+	require_once('mod/proxy.php');
 
 	$ssl_state = ((local_user()) ? true : false);
 
@@ -362,12 +361,12 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 
 	$alike = array();
 	$dlike = array();
-	
-	
+
+
 	// array with html for each thread (parent+comments)
 	$threads = array();
 	$threadsid = -1;
-	
+
 	if($items && count($items)) {
 
 		if($mode === 'network-new' || $mode === 'search' || $mode === 'community') {
@@ -395,11 +394,11 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				}
 				else
 					$nickname = $a->user['nickname'];
-				
+
 				// prevent private email from leaking.
 				if($item['network'] === NETWORK_MAIL && local_user() != $item['uid'])
 						continue;
-			
+
 				$profile_name   = ((strlen($item['author-name']))   ? $item['author-name']   : $item['name']);
 				if($item['author-link'] && (! $item['author-name']))
 					$profile_name = $item['author-link'];
@@ -413,7 +412,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				if($sp)
 					$sparkle = ' sparkle';
 				else
-					$profile_link = zrl($profile_link);					
+					$profile_link = zrl($profile_link);
 
 				$normalised = normalise_link((strlen($item['author-link'])) ? $item['author-link'] : $item['url']);
 				if(($normalised != 'mailbox') && (x($a->contacts[$normalised])))
@@ -441,13 +440,30 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 
 				$star = false;
 				$isstarred = "unstarred";
-				
+
 				$lock = false;
 				$likebuttons = false;
 				$shareable = false;
 
 				$body = prepare_body($item,true);
-				
+
+				if($a->theme['template_engine'] === 'internal') {
+					$name_e = template_escape($profile_name);
+					$title_e = template_escape($item['title']);
+					$body_e = template_escape($body);
+					$text_e = strip_tags(template_escape($body));
+					$location_e = template_escape($location);
+					$owner_name_e = template_escape($owner_name);
+				}
+				else {
+					$name_e = $profile_name;
+					$title_e = $item['title'];
+					$body_e = $body;
+					$text_e = strip_tags($body);
+					$location_e = $location;
+					$owner_name_e = $owner_name;
+				}
+
 				//$tmp_item = replace_macros($tpl,array(
 				$tmp_item = array(
 					'template' => $tpl,
@@ -455,19 +471,19 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
-					'name' => template_escape($profile_name),
+					'name' => $name_e,
 					'sparkle' => $sparkle,
 					'lock' => $lock,
-					'thumb' => $profile_avatar,
-					'title' => template_escape($item['title']),
-					'body' => template_escape($body),
-					'text' => strip_tags(template_escape($body)),
+					'thumb' => proxy_url($profile_avatar),
+					'title' => $title_e,
+					'body' => $body_e,
+					'text' => $text_e,
 					'ago' => (($item['app']) ? sprintf( t('%s from %s'),relative_date($item['created']),$item['app']) : relative_date($item['created'])),
-					'location' => template_escape($location),
+					'location' => $location_e,
 					'indent' => '',
-					'owner_name' => template_escape($owner_name),
+					'owner_name' => $owner_name_e,
 					'owner_url' => $owner_url,
-					'owner_photo' => $owner_photo,
+					'owner_photo' => proxy_url($owner_photo),
 					'plink' => get_plink($item),
 					'edpost' => false,
 					'isstarred' => $isstarred,
@@ -477,7 +493,8 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'like' => '',
 					'dislike' => '',
 					'comment' => '',
-					'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state) . '/display/' . $nickname . '/' . $item['id'], 'title'=> t('View in context'))),
+					//'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state) . '/display/' . $nickname . '/' . $item['id'], 'title'=> t('View in context'))),
+					'conv' => (($preview) ? '' : array('href'=> $a->get_baseurl($ssl_state).'/display/'.$item['guid'], 'title'=> t('View in context'))),
 					'previewing' => $previewing,
 					'wait' => t('Please wait'),
 				);
@@ -537,8 +554,8 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 
 				// We've already parsed out like/dislike for special treatment. We can ignore them now
 
-				if(((activity_match($item['verb'],ACTIVITY_LIKE)) 
-					|| (activity_match($item['verb'],ACTIVITY_DISLIKE))) 
+				if(((activity_match($item['verb'],ACTIVITY_LIKE))
+					|| (activity_match($item['verb'],ACTIVITY_DISLIKE)))
 					&& ($item['id'] != $item['parent']))
 					continue;
 
@@ -549,7 +566,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				// (author collapsing is currently disabled)
 				// If a single author has more than 3 consecutive top-level posts, squash the remaining ones.
 				// If there are more than two comments, squash all but the last 2.
-			
+
 				if($toplevelpost) {
 
 					$item_writeable = (($item['writable'] || $item['self']) ? true : false);
@@ -558,7 +575,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					$comments_collapsed = false;
 					$comment_lastcollapsed  = false;
 					$comment_firstcollapsed = false;
-					
+
 					$threadsid++;
 					$threads[$threadsid]['id'] = $item['item_id'];
 					$threads[$threadsid]['private'] = $item['private'];
@@ -574,7 +591,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					$comments_seen ++;
 					$comment_lastcollapsed  = false;
 					$comment_firstcollapsed = false;
-				}	
+				}
 
 				$override_comment_box = ((($page_writeable) && ($item_writeable)) ? true : false);
 				$show_comment_box = ((($page_writeable) && ($item_writeable) && ($comments_seen == $comments[$item['parent']])) ? true : false);
@@ -621,7 +638,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 						$owner_photo = $a->page_contact['thumb'];
 						$owner_name = $a->page_contact['name'];
 						$template = $wallwall;
-						$commentww = 'ww';	
+						$commentww = 'ww';
 					}
 
 					if((! $item['wall']) && $item['owner-link']) {
@@ -639,7 +656,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 							// well that it's the same Bob Smith. 
 
 							// But it could be somebody else with the same name. It just isn't highly likely. 
-							
+
 
 							$owner_url = $item['owner-link'];
 							$owner_photo = $item['owner-avatar'];
@@ -766,7 +783,7 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 				if($sp)
 					$sparkle = ' sparkle';
 				else
-					$profile_link = zrl($profile_link);					
+					$profile_link = zrl($profile_link);
 
 				$normalised = normalise_link((strlen($item['author-link'])) ? $item['author-link'] : $item['url']);
 				if(($normalised != 'mailbox') && (x($a->contacts,$normalised)))
@@ -802,17 +819,35 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 
 				$body = prepare_body($item,true);
 				//$tmp_item = replace_macros($template,
+
+				if($a->theme['template_engine'] === 'internal') {
+					$body_e = template_escape($body);
+					$text_e = strip_tags(template_escape($body));
+					$name_e = template_escape($profile_name);
+					$title_e = template_escape($item['title']);
+					$location_e = template_escape($location);
+					$owner_name_e = template_escape($owner_name);
+				}
+				else {
+					$body_e = $body;
+					$text_e = strip_tags($body);
+					$name_e = $profile_name;
+					$title_e = $item['title'];
+					$location_e = $location;
+					$owner_name_e = $owner_name;
+				}
+
 				$tmp_item = array(
 					// collapse comments in template. I don't like this much...
 					'comment_firstcollapsed' => $comment_firstcollapsed,
 					'comment_lastcollapsed' => $comment_lastcollapsed,
 					// template to use to render item (wall, walltowall, search)
 					'template' => $template,
-					
+
 					'type' => implode("",array_slice(explode("/",$item['verb']),-1)),
 					'tags' => $tags,
-					'body' => template_escape($body),
-					'text' => strip_tags(template_escape($body)),
+					'body' => $body_e,
+					'text' => $text_e,
 					'id' => $item['item_id'],
 					'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 					'olinktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
@@ -821,19 +856,19 @@ function render_content(&$a, $items, $mode, $update, $preview = false) {
 					'vwall' => t('via Wall-To-Wall:'),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
-					'name' => template_escape($profile_name),
-					'thumb' => $profile_avatar,
+					'name' => $name_e,
+					'thumb' => proxy_url($profile_avatar),
 					'osparkle' => $osparkle,
 					'sparkle' => $sparkle,
-					'title' => template_escape($item['title']),
+					'title' => $title_e,
 					'ago' => (($item['app']) ? sprintf( t('%s from %s'),relative_date($item['created']),$item['app']) : relative_date($item['created'])),
 					'lock' => $lock,
-					'location' => template_escape($location),
+					'location' => $location_e,
 					'indent' => $indent,
 					'shiny' => $shiny,
 					'owner_url' => $owner_url,
-					'owner_photo' => $owner_photo,
-					'owner_name' => template_escape($owner_name),
+					'owner_photo' => proxy_url($owner_photo),
+					'owner_name' => $owner_name_e,
 					'plink' => get_plink($item),
 					'edpost' => $edpost,
 					'isstarred' => $isstarred,

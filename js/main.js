@@ -21,7 +21,7 @@
 	var src = null;
 	var prev = null;
 	var livetime = null;
-	var msie = false;
+	var force_update = false;
 	var stopped = false;
 	var totStopped = false;
 	var timer = null;
@@ -36,8 +36,6 @@
 	$(function() {
 		$.ajaxSetup({cache: false});
 
-		msie = $.browser.msie ;
-		
 		/* setup tooltips *//*
 		$("a,.tt").each(function(){
 			var e = $(this);
@@ -82,19 +80,23 @@
  		}
  		}
 		$('a[rel^=#]').click(function(e){
+			e.preventDefault();
+			var parent = $(this).parent();
+			var isSelected = (last_popup_button && parent.attr('id') == last_popup_button.attr('id'));
 			close_last_popup_menu();
+			if(isSelected) return false;
 			menu = $( $(this).attr('rel') );
 			e.preventDefault();
 			e.stopPropagation();
 			if (menu.attr('popup')=="false") return false;
-			$(this).parent().toggleClass("selected");
+			parent.toggleClass("selected");
 			menu.toggle();
 			if (menu.css("display") == "none") {
 				last_popup_menu = null;
 				last_popup_button = null;
 			} else {
 				last_popup_menu = menu;
-				last_popup_button = $(this).parent();
+				last_popup_button = parent;
 			}
 			return false;
 		});
@@ -103,9 +105,9 @@
 		});
 		
 		// fancyboxes
-		$("a.popupbox").fancybox({
-			'transitionIn' : 'elastic',
-			'transitionOut' : 'elastic'
+		$("a.popupbox").colorbox({
+			'inline' : true,
+			'transition' : 'elastic'
 		});
 		
 
@@ -181,7 +183,17 @@
 					html = notifications_tpl.format(e.attr('href'),e.attr('photo'), text, e.attr('date'), e.attr('seen'));
 					nnm.append(html);
 				});
+
+				$("img[data-src]", nnm).each(function(i, el){
+					// Add src attribute for images with a data-src attribute
+					// However, don't bother if the data-src attribute is empty, because
+					// an empty "src" tag for an image will cause some browsers
+					// to prefetch the root page of the Friendica hub, which will
+					// unnecessarily load an entire profile/ or network/ page
+					if($(el).data("src") != '') $(el).attr('src', $(el).data("src"));
+				});
 			}
+
 			notif = eNotif.attr('count');
 			if (notif>0){
 				$("#nav-notifications-linkmenu").addClass("on");
@@ -202,8 +214,7 @@
 			});
 			
 		});
-		
-		
+
  		NavUpdate(); 
 		// Allow folks to stop the ajax page updates with the pause/break key
 		$(document).keydown(function(event) {
@@ -288,11 +299,16 @@
 		prev = 'live-' + src;
 
 		in_progress = true;
+
+		if ($(document).scrollTop() == 0)
+			force_update = true;
+
 		var udargs = ((netargs.length) ? '/' + netargs : '');
-		var update_url = 'update_' + src + udargs + '&p=' + profile_uid + '&page=' + profile_page + '&msie=' + ((msie) ? 1 : 0);
+		var update_url = 'update_' + src + udargs + '&p=' + profile_uid + '&page=' + profile_page + '&force=' + ((force_update) ? 1 : 0);
 
 		$.get(update_url,function(data) {
 			in_progress = false;
+			force_update = false;
 			//			$('.collapsed-comments',data).each(function() {
 			//	var ident = $(this).attr('id');
 			//	var is_hidden = $('#' + ident).is(':hidden');
@@ -372,6 +388,9 @@
 			}
 			/* autocomplete @nicknames */
 			$(".comment-edit-form  textarea").contact_autocomplete(baseurl+"/acl");
+
+			// setup videos, since VideoJS won't take care of any loaded via AJAX
+			if(typeof videojs != 'undefined') videojs.autoSetup();
 		});
 	}
 
@@ -398,6 +417,7 @@
 		$('#like-rotator-' + ident.toString()).show();
 		$.get('like/' + ident.toString() + '?verb=' + verb, NavUpdate );
 		liking = 1;
+		force_update = true;
 	}
 
 	function dosubthread(ident) {
@@ -418,13 +438,33 @@
 				$('#star-' + ident).addClass('hidden');
 				$('#unstar-' + ident).removeClass('hidden');
 			}
-			else {			
+			else {
 				$('#starred-' + ident).addClass('unstarred');
 				$('#starred-' + ident).removeClass('starred');
 				$('#star-' + ident).removeClass('hidden');
 				$('#unstar-' + ident).addClass('hidden');
 			}
-			$('#like-rotator-' + ident).hide();	
+			$('#like-rotator-' + ident).hide();
+		});
+	}
+
+	function doignore(ident) {
+		ident = ident.toString();
+		$('#like-rotator-' + ident).show();
+		$.get('ignored/' + ident, function(data) {
+			if(data.match(/1/)) {
+				$('#ignored-' + ident).addClass('ignored');
+				$('#ignored-' + ident).removeClass('unignored');
+				$('#ignore-' + ident).addClass('hidden');
+				$('#unignore-' + ident).removeClass('hidden');
+			}
+			else {
+				$('#ignored-' + ident).addClass('unignored');
+				$('#ignored-' + ident).removeClass('ignored');
+				$('#ignore-' + ident).removeClass('hidden');
+				$('#unignore-' + ident).addClass('hidden');
+			}
+			$('#like-rotator-' + ident).hide();
 		});
 	}
 
@@ -489,6 +529,7 @@
 						commentClose(tarea,id);
 					if(timer) clearTimeout(timer);
 					timer = setTimeout(NavUpdate,10);
+					force_update = true;
 				}
 				if(data.reload) {
 					window.location.href=data.reload;
@@ -621,6 +662,7 @@ function notifyMarkAll() {
 	$.get('notify/mark/all', function(data) {
 		if(timer) clearTimeout(timer);
 		timer = setTimeout(NavUpdate,1000);
+		force_update = true;
 	});
 }
 
@@ -661,13 +703,14 @@ function setupFieldRichtext(){
 		theme_advanced_toolbar_location : "top",
 		theme_advanced_toolbar_align : "center",
 		theme_advanced_blockformats : "blockquote,code",
+		theme_advanced_resizing : true,
 		paste_text_sticky : true,
 		entity_encoding : "raw",
 		add_unload_trigger : false,
 		remove_linebreaks : false,
-		force_p_newlines : false,
-		force_br_newlines : true,
-		forced_root_block : '',
+		//force_p_newlines : false,
+		//force_br_newlines : true,
+		forced_root_block : 'div',
 		convert_urls: false,
 		content_css: baseurl+"/view/custom_tinymce.css",
 		theme_advanced_path : false,

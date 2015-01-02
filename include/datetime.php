@@ -19,7 +19,7 @@ if(! function_exists('select_timezone')) {
 function select_timezone($current = 'America/Los_Angeles') {
 
 	$timezone_identifiers = DateTimeZone::listIdentifiers();
-	
+
 	$o ='<select id="timezone_select" name="timezone">';
 
 	usort($timezone_identifiers, 'timezone_cmp');
@@ -282,6 +282,11 @@ function relative_date($posted_date,$format = null) {
 		return t('less than a second ago');
 	}
     
+	$time_append = '';
+	if ($etime >= 86400) {
+		$time_append = ' ('.$localtime.')';
+	}
+	
 	$a = array( 12 * 30 * 24 * 60 * 60  =>  array( t('year'),   t('years')),
 				30 * 24 * 60 * 60       =>  array( t('month'),  t('months')),
 				7  * 24 * 60 * 60       =>  array( t('week'),   t('weeks')),
@@ -298,7 +303,7 @@ function relative_date($posted_date,$format = null) {
 			// translators - e.g. 22 hours ago, 1 minute ago
 			if(! $format)
 				$format = t('%1$d %2$s ago');
-			return sprintf( $format,$r, (($r == 1) ? $str[0] : $str[1]));
+			return sprintf( $format,$r, (($r == 1) ? $str[0] : $str[1])).$time_append;
         }
     }
 }}
@@ -487,11 +492,11 @@ function update_contact_birthdays() {
 				dbesc('birthday'),
 				intval(0)
 			);
-			
+
 
 			// update bdyear
 
-			q("UPDATE `contact` SET `bdyear` = '%s', `bd` = '%s' WHERE `uid` = %d AND `id` = %d LIMIT 1",
+			q("UPDATE `contact` SET `bdyear` = '%s', `bd` = '%s' WHERE `uid` = %d AND `id` = %d",
 				dbesc(substr($nextbd,0,4)),
 				dbesc($nextbd),
 				intval($rr['uid']),

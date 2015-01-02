@@ -27,6 +27,8 @@ function directory_post(&$a) {
 
 function directory_content(&$a) {
 
+	require_once("mod/proxy.php");
+
 	if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
 		notice( t('Public access denied.') . EOL);
 		return;
@@ -90,7 +92,7 @@ function directory_content(&$a) {
 
 
 			$profile_link = $a->get_baseurl() . '/profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['profile_uid']);
-		
+
 			$pdesc = (($rr['pdesc']) ? $rr['pdesc'] . '<br />' : '');
 
 			$details = '';
@@ -140,19 +142,26 @@ function directory_content(&$a) {
 			$homepage = ((x($profile,'homepage') == 1) ?  t('Homepage:') : False);
 
 			$about = ((x($profile,'about') == 1) ?  t('About:') : False);
-			
+
 			$tpl = get_markup_template('directory_item.tpl');
+
+			if($a->theme['template_engine'] === 'internal') {
+				$location_e = template_escape($location);
+			}
+			else {
+				$location_e = $location;
+			}
 
 			$entry = replace_macros($tpl,array(
 				'$id' => $rr['id'],
-				'$profile-link' => $profile_link,
-				'$photo' => $a->get_cached_avatar_image($rr[$photo]),
-				'$alt-text' => $rr['name'],
+				'$profile_link' => $profile_link,
+				'$photo' => proxy_url($a->get_cached_avatar_image($rr[$photo])),
+				'$alt_text' => $rr['name'],
 				'$name' => $rr['name'],
 				'$details' => $pdesc . $details,
-				'$page-type' => $page_type,
+				'$page_type' => $page_type,
 				'$profile' => $profile,
-				'$location' => template_escape($location),
+				'$location' => $location_e,
 				'$gender'   => $gender,
 				'$pdesc'	=> $pdesc,
 				'$marital'  => $marital,
@@ -164,7 +173,7 @@ function directory_content(&$a) {
 			$arr = array('contact' => $rr, 'entry' => $entry);
 
 			call_hooks('directory_item', $arr);
-			
+
 			unset($profile);
 			unset($location);
 

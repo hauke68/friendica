@@ -37,6 +37,8 @@ require_once('include/html2plain.php');
  *		tag						(in photos.php, poke.php, tagger.php)
  *		tgroup					(in items.php)
  *		wall-new				(in photos.php, item.php)
+ *		removeme				(in Contact.php)
+ * 		relocate				(in uimport.php)
  *
  * and ITEM_ID is the id of the item in the database that needs to be sent to others.
  */
@@ -51,13 +53,13 @@ function notifier_run(&$argv, &$argc){
   
 	if(is_null($db)) {
 		@include(".htconfig.php");
-		require_once("dba.php");
+		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
 		        unset($db_host, $db_user, $db_pass, $db_data);
 	}
 
-	require_once("session.php");
-	require_once("datetime.php");
+	require_once("include/session.php");
+	require_once("include/datetime.php");
 	require_once('include/items.php');
 	require_once('include/bbcode.php');
 	require_once('include/email.php');
@@ -138,14 +140,17 @@ function notifier_run(&$argv, &$argc){
 		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1", intval($item_id));
 		if (! $r)
 			return;
+
 		$user = $r[0];
 		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` = 1 LIMIT 1", intval($item_id));
 		if (! $r)
 			return;
+
 		$self = $r[0];
 		$r = q("SELECT * FROM `contact` WHERE `self` = 0 AND `uid` = %d", intval($item_id));
 		if(! $r)
 			return;
+
 		require_once('include/Contact.php');
 		foreach($r as $contact) {
 			terminate_friendship($user, $self, $contact);
@@ -202,7 +207,7 @@ function notifier_run(&$argv, &$argc){
 	$r = q("SELECT `contact`.*, `user`.`pubkey` AS `upubkey`, `user`.`prvkey` AS `uprvkey`, 
 		`user`.`timezone`, `user`.`nickname`, `user`.`sprvkey`, `user`.`spubkey`, 
 		`user`.`page-flags`, `user`.`prvnets`
-		FROM `contact` LEFT JOIN `user` ON `user`.`uid` = `contact`.`uid` 
+		FROM `contact` INNER JOIN `user` ON `user`.`uid` = `contact`.`uid` 
 		WHERE `contact`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
 		intval($uid)
 	);
@@ -236,31 +241,31 @@ function notifier_run(&$argv, &$argc){
 
 		// if $parent['wall'] == 1 we will already have the parent message in our array
 		// and we will relay the whole lot.
- 
+
 		// expire sends an entire group of expire messages and cannot be forwarded.
-		// However the conversation owner will be a part of the conversation and will 
+		// However the conversation owner will be a part of the conversation and will
 		// be notified during this run.
 		// Other DFRN conversation members will be alerted during polled updates.
 
 
 
 		// Diaspora members currently are not notified of expirations, and other networks have
-		// either limited or no ability to process deletions. We should at least fix Diaspora 
+		// either limited or no ability to process deletions. We should at least fix Diaspora
 		// by stringing togther an array of retractions and sending them onward.
-		 
-  	
+
+
 		$localhost = str_replace('www.','',$a->get_hostname());
 		if(strpos($localhost,':'))
 			$localhost = substr($localhost,0,strpos($localhost,':'));
 
 		/**
 		 *
-		 * Be VERY CAREFUL if you make any changes to the following several lines. Seemingly innocuous changes 
-		 * have been known to cause runaway conditions which affected several servers, along with 
-		 * permissions issues. 
+		 * Be VERY CAREFUL if you make any changes to the following several lines. Seemingly innocuous changes
+		 * have been known to cause runaway conditions which affected several servers, along with
+		 * permissions issues.
 		 *
 		 */
- 
+
 		$relay_to_owner = false;
 
 		if((! $top_level) && ($parent['wall'] == 0) && (! $expire) && (stristr($target_item['uri'],$localhost))) {
@@ -269,8 +274,8 @@ function notifier_run(&$argv, &$argc){
 
 
 		if(($cmd === 'uplink') && (intval($parent['forum_mode']) == 1) && (! $top_level)) {
-			$relay_to_owner = true;			
-		} 
+			$relay_to_owner = true;
+		}
 
 		// until the 'origin' flag has been in use for several months
 		// we will just use it as a fallback test
@@ -309,7 +314,7 @@ function notifier_run(&$argv, &$argc){
 			}
 
 			$allow_people = expand_acl($parent['allow_cid']);
-			$allow_groups = expand_groups(expand_acl($parent['allow_gid']));
+			$allow_groups = expand_groups(expand_acl($parent['allow_gid']),true);
 			$deny_people  = expand_acl($parent['deny_cid']);
 			$deny_groups  = expand_groups(expand_acl($parent['deny_gid']));
 
@@ -438,7 +443,7 @@ function notifier_run(&$argv, &$argc){
 			set_config('system','site_prvkey', $res['prvkey']);
 			set_config('system','site_pubkey', $res['pubkey']);
 		}
-		
+
 		$rp = q("SELECT `resource-id` , `scale`, type FROM `photo` 
 						WHERE `profile` = 1 AND `uid` = %d ORDER BY scale;", $uid);
 		$photos = array();
@@ -447,7 +452,7 @@ function notifier_run(&$argv, &$argc){
 			$photos[$p['scale']] = $a->get_baseurl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
 		}
 		unset($rp, $ext);
-		
+
         $atom .= replace_macros($sugg_template, array(
             '$name' => xmlify($owner['name']),
             '$photo' => xmlify($photos[4]),
@@ -572,12 +577,12 @@ function notifier_run(&$argv, &$argc){
 		// This controls the number of deliveries to execute with each separate delivery process.
 		// By default we'll perform one delivery per process. Assuming a hostile shared hosting
 		// provider, this provides the greatest chance of deliveries if processes start getting 
-		// killed. We can also space them out with the delivery_interval to also help avoid them 
+		// killed. We can also space them out with the delivery_interval to also help avoid them
 		// getting whacked.
 
-		// If $deliveries_per_process > 1, we will chain this number of multiple deliveries 
-		// together into a single process. This will reduce the overall number of processes 
-		// spawned for each delivery, but they will run longer. 
+		// If $deliveries_per_process > 1, we will chain this number of multiple deliveries
+		// together into a single process. This will reduce the overall number of processes
+		// spawned for each delivery, but they will run longer.
 
 		$deliveries_per_process = intval(get_config('system','delivery_batch_count'));
 		if($deliveries_per_process <= 0)
@@ -592,8 +597,8 @@ function notifier_run(&$argv, &$argc){
 				continue;
 
 			// potentially more than one recipient. Start a new process and space them out a bit.
-			// we will deliver single recipient types of message and email recipients here. 
-		
+			// we will deliver single recipient types of message and email recipients here.
+
 			if((! $mail) && (! $fsuggest) && (!$relocate) && (! $followup)) {
 
 				$this_batch[] = $contact['id'];
@@ -606,6 +611,10 @@ function notifier_run(&$argv, &$argc){
 				}
 				continue;
 			}
+			// be sure to pick up any stragglers
+			if(count($this_batch))
+				proc_run('php','include/delivery.php',$cmd,$item_id,$this_batch);
+
 
 			$deliver_status = 0;
 
@@ -626,15 +635,15 @@ function notifier_run(&$argv, &$argc){
 						else
 							$sql_extra = sprintf(" AND `issued-id` = '%s' ", dbesc($contact['dfrn-id']));
 
-						$x = q("SELECT	`contact`.*, `contact`.`uid` AS `importer_uid`, 
-							`contact`.`pubkey` AS `cpubkey`, 
-							`contact`.`prvkey` AS `cprvkey`, 
-							`contact`.`thumb` AS `thumb`, 
+						$x = q("SELECT	`contact`.*, `contact`.`uid` AS `importer_uid`,
+							`contact`.`pubkey` AS `cpubkey`,
+							`contact`.`prvkey` AS `cprvkey`,
+							`contact`.`thumb` AS `thumb`,
 							`contact`.`url` as `url`,
 							`contact`.`name` as `senderName`,
-							`user`.* 
-							FROM `contact` 
-							LEFT JOIN `user` ON `contact`.`uid` = `user`.`uid` 
+							`user`.*
+							FROM `contact`
+							INNER JOIN `user` ON `contact`.`uid` = `user`.`uid`
 							WHERE `contact`.`blocked` = 0 AND `contact`.`archive` = 0
 							AND `contact`.`pending` = 0
 							AND `contact`.`network` = '%s' AND `user`.`nickname` = '%s'
@@ -647,7 +656,7 @@ function notifier_run(&$argv, &$argc){
 						if($x && count($x)) {
 							$write_flag = ((($x[0]['rel']) && ($x[0]['rel'] != CONTACT_IS_SHARING)) ? true : false);
 							if((($owner['page-flags'] == PAGE_COMMUNITY) || ($write_flag)) && (! $x[0]['writable'])) {
-								q("update contact set writable = 1 where id = %d limit 1",
+								q("update contact set writable = 1 where id = %d",
 									intval($x[0]['id'])
 								);
 								$x[0]['writable'] = 1;
@@ -655,7 +664,7 @@ function notifier_run(&$argv, &$argc){
 
 							// if contact's ssl policy changed, which we just determined
 							// is on our own server, update our contact links
-							
+
 							$ssl_policy = get_config('system','ssl_policy');
 							fix_contact_ssl_policy($x[0],$ssl_policy);
 
@@ -667,17 +676,15 @@ function notifier_run(&$argv, &$argc){
 							require_once('library/simplepie/simplepie.inc');
 							logger('mod-delivery: local delivery');
 							local_delivery($x[0],$atom);
-							break;					
+							break;
 						}
 					}
-
-
 
 					logger('notifier: dfrndelivery: ' . $contact['name']);
 					$deliver_status = dfrn_deliver($owner,$contact,$atom);
 
 					logger('notifier: dfrn_delivery returns ' . $deliver_status);
-	
+
 					if($deliver_status == (-1)) {
 						logger('notifier: delivery failed: queuing message');
 						// queue message for redelivery
@@ -689,6 +696,7 @@ function notifier_run(&$argv, &$argc){
 					// Do not send to ostatus if we are not configured to send to public networks
 					if($owner['prvnets'])
 						break;
+
 					if(get_config('system','ostatus_disabled') || get_config('system','dfrn_only'))
 						break;
 
@@ -700,8 +708,7 @@ function notifier_run(&$argv, &$argc){
 							// queue message for redelivery
 							add_to_queue($contact['id'],NETWORK_OSTATUS,$slap);
 						}
-					}
-					else {
+					} else {
 
 						// only send salmon if public - e.g. if it's ok to notify
 						// a public hub, it's ok to send a salmon
@@ -723,7 +730,7 @@ function notifier_run(&$argv, &$argc){
 
 				case NETWORK_MAIL:
 				case NETWORK_MAIL2:
-						
+
 					if(get_config('system','dfrn_only'))
 						break;
 
@@ -748,7 +755,7 @@ function notifier_run(&$argv, &$argc){
 						}
 						if(! $it)
 							break;
-						
+
 
 
 						$local_user = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
@@ -756,7 +763,7 @@ function notifier_run(&$argv, &$argc){
 						);
 						if(! count($local_user))
 							break;
-						
+
 						$reply_to = '';
 						$r1 = q("SELECT * FROM `mailacct` WHERE `uid` = %d LIMIT 1",
 							intval($uid)
@@ -767,29 +774,43 @@ function notifier_run(&$argv, &$argc){
 						$subject  = (($it['title']) ? email_header_encode($it['title'],'UTF-8') : t("\x28no subject\x29")) ;
 
 						// only expose our real email address to true friends
-
 						if(($contact['rel'] == CONTACT_IS_FRIEND) && (! $contact['blocked']))
-							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
+							if($reply_to) {
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $reply_to . '>' . "\n";
+								$headers .= 'Sender: '.$local_user[0]['email']."\n";
+							} else
+								$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . $local_user[0]['email'] . '>' . "\n";
 						else
 							$headers  = 'From: ' . email_header_encode($local_user[0]['username'],'UTF-8') . ' <' . t('noreply') . '@' . $a->get_hostname() . '>' . "\n";
 
-						if($reply_to)
-							$headers .= 'Reply-to: ' . $reply_to . "\n";
-
-						// for testing purposes: Collect exported mails
-						//$file = tempnam("/tmp/friendica/", "mail-out2-");
-						//file_put_contents($file, json_encode($it));
+						//if($reply_to)
+						//	$headers .= 'Reply-to: ' . $reply_to . "\n";
 
 						$headers .= 'Message-Id: <' . iri2msgid($it['uri']) . '>' . "\n";
 
 						if($it['uri'] !== $it['parent-uri']) {
-							$headers .= 'References: <' . iri2msgid($it['parent-uri']) . '>' . "\n";
-							if(!strlen($it['title'])) {
-								$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' LIMIT 1",
-									dbesc($it['parent-uri']));
+							$headers .= "References: <".iri2msgid($it["parent-uri"]).">";
 
-								if(count($r) AND ($r[0]['title'] != ''))  
+							// If Threading is enabled, write down the correct parent
+							if (($it["thr-parent"] != "") and ($it["thr-parent"] != $it["parent-uri"]))
+								$headers .= " <".iri2msgid($it["thr-parent"]).">";
+							$headers .= "\n";
+
+							if(!$it['title']) {
+								$r = q("SELECT `title` FROM `item` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
+									dbesc($it['parent-uri']),
+									intval($uid));
+
+								if(count($r) AND ($r[0]['title'] != ''))
 									$subject = $r[0]['title'];
+								else {
+									$r = q("SELECT `title` FROM `item` WHERE `parent-uri` = '%s' AND `uid` = %d LIMIT 1",
+										dbesc($it['parent-uri']),
+										intval($uid));
+
+									if(count($r) AND ($r[0]['title'] != ''))
+										$subject = $r[0]['title'];
+								}
 							}
 							if(strncasecmp($subject,'RE:',3))
 								$subject = 'Re: '.$subject;
@@ -822,7 +843,7 @@ function notifier_run(&$argv, &$argc){
 
 					if(! $contact['pubkey'])
 						break;
-					
+
 					if($target_item['verb'] === ACTIVITY_DISLIKE) {
 						// unsupported
 						break;
@@ -855,12 +876,15 @@ function notifier_run(&$argv, &$argc){
 				case NETWORK_FACEBOOK:
 					if(get_config('system','dfrn_only'))
 						break;
+				case NETWORK_PUMPIO:
+					if(get_config('system','dfrn_only'))
+						break;
 				default:
 					break;
 			}
 		}
 	}
-		
+
 	// send additional slaps to mentioned remote tags (@foo@example.com)
 
 	if($slap && count($url_recipients) && ($followup || $top_level) && $public_message && (! $expire)) {
@@ -878,14 +902,14 @@ function notifier_run(&$argv, &$argc){
 
 	if($public_message) {
 
-		$r1 = q("SELECT DISTINCT(`batch`), `id`, `name`,`network` FROM `contact` WHERE `network` = '%s' 
+		$r1 = q("SELECT DISTINCT(`batch`), `id`, `name`,`network` FROM `contact` WHERE `network` = '%s'
 			AND `uid` = %d AND `rel` != %d group by `batch` ORDER BY rand() ",
 			dbesc(NETWORK_DIASPORA),
 			intval($owner['uid']),
 			intval(CONTACT_IS_SHARING)
 		);
-			
-		$r2 = q("SELECT `id`, `name`,`network` FROM `contact` 
+
+		$r2 = q("SELECT `id`, `name`,`network` FROM `contact`
 			WHERE `network` in ( '%s', '%s')  AND `uid` = %d AND `blocked` = 0 AND `pending` = 0 AND `archive` = 0
 			AND `rel` != %d order by rand() ",
 			dbesc(NETWORK_DFRN),
@@ -938,9 +962,18 @@ function notifier_run(&$argv, &$argc){
 					$h = trim($h);
 					if(! strlen($h))
 						continue;
-					$params = 'hub.mode=publish&hub.url=' . urlencode($a->get_baseurl() . '/dfrn_poll/' . $owner['nickname'] );
-					post_url($h,$params);
-					logger('pubsub: publish: ' . $h . ' ' . $params . ' returned ' . $a->get_curl_code());
+
+					if ($h === '[internal]') {
+						// Set push flag for PuSH subscribers to this topic,
+						// they will be notified in queue.php
+						q("UPDATE `push_subscriber` SET `push` = 1 " . 
+						  "WHERE `nickname` = '%s'", dbesc($owner['nickname']));
+					} else {
+
+						$params = 'hub.mode=publish&hub.url=' . urlencode( $a->get_baseurl() . '/dfrn_poll/' . $owner['nickname'] );
+						post_url($h,$params);
+						logger('pubsub: publish: ' . $h . ' ' . $params . ' returned ' . $a->get_curl_code());
+					}
 					if(count($hubs) > 1)
 						sleep(7);				// try and avoid multiple hubs responding at precisely the same time
 				}

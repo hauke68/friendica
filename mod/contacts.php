@@ -2,6 +2,7 @@
 
 require_once('include/Contact.php');
 require_once('include/socgraph.php');
+require_once('include/contact_selectors.php');
 
 function contacts_init(&$a) {
 	if(! local_user())
@@ -33,10 +34,13 @@ function contacts_init(&$a) {
 				'$photo' => $a->data['contact']['photo']
 			));
 			$follow_widget = '';
-	}	
+	}
 	else {
 		$vcard_widget = '';
-		$follow_widget = follow_widget();
+		if (isset($_GET['add']))
+			$follow_widget = follow_widget($_GET['add']);
+		else
+			$follow_widget = follow_widget();
 	}
 
 	$groups_widget .= group_side('contacts','group',false,0,$contact_id);
@@ -66,10 +70,60 @@ function contacts_init(&$a) {
 
 }
 
-function contacts_post(&$a) {
+function contacts_batch_actions(&$a){
+	$contacts_id = $_POST['contact_batch'];
+	if (!is_array($contacts_id)) return;
 	
+	$orig_records = q("SELECT * FROM `contact` WHERE `id` IN (%s) AND `uid` = %d AND `self` = 0",
+		implode(",", $contacts_id),
+		intval(local_user())
+	);
+	
+	$count_actions=0;
+	foreach($orig_records as $orig_record) {
+		$contact_id = $orig_record['id'];
+		if (x($_POST, 'contacts_batch_update')) {
+			_contact_update($contact_id);
+			$count_actions++;
+		}
+		if (x($_POST, 'contacts_batch_block')) {
+			$r  = _contact_block($contact_id, $orig_record);
+			if ($r) $count_actions++;
+		}
+		if (x($_POST, 'contacts_batch_ignore')) {
+			$r = _contact_ignore($contact_id, $orig_record);
+			if ($r) $count_actions++;
+		}
+		if (x($_POST, 'contacts_batch_archive')) {
+			$r = _contact_archive($contact_id, $orig_record);
+			if ($r) $count_actions++;
+		}
+		if (x($_POST, 'contacts_batch_drop')) {
+			_contact_drop($contact_id, $orig_record);
+			$count_actions++;
+		}
+	}
+	if ($count_actions>0) {
+		info ( sprintf( tt("%d contact edited.", "%d contacts edited", $count_actions), $count_actions) );
+	}
+	
+	if(x($_SESSION,'return_url'))
+		goaway($a->get_baseurl(true) . '/' . $_SESSION['return_url']);
+	else
+		goaway($a->get_baseurl(true) . '/contacts');
+
+}
+
+
+function contacts_post(&$a) {
+
 	if(! local_user())
 		return;
+
+	if ($a->argv[1]==="batch") {
+		contacts_batch_actions($a);
+		return;
+	}
 
 	$contact_id = intval($a->argv[1]);
 	if(! $contact_id)
@@ -102,6 +156,12 @@ function contacts_post(&$a) {
 
 	$hidden = intval($_POST['hidden']);
 
+	$notify = intval($_POST['notify']);
+
+	$fetch_further_information = intval($_POST['fetch_further_information']);
+
+	$ffi_keyword_blacklist = fix_mce_lf(escape_tags(trim($_POST['ffi_keyword_blacklist'])));
+
 	$priority = intval($_POST['poll']);
 	if($priority > 5 || $priority < 0)
 		$priority = 0;
@@ -109,11 +169,15 @@ function contacts_post(&$a) {
 	$info = fix_mce_lf(escape_tags(trim($_POST['info'])));
 
 	$r = q("UPDATE `contact` SET `profile-id` = %d, `priority` = %d , `info` = '%s',
-		`hidden` = %d WHERE `id` = %d AND `uid` = %d LIMIT 1",
+		`hidden` = %d, `notify_new_posts` = %d, `fetch_further_information` = %d,
+		`ffi_keyword_blacklist` = '%s' WHERE `id` = %d AND `uid` = %d",
 		intval($profile_id),
 		intval($priority),
 		dbesc($info),
 		intval($hidden),
+		intval($notify),
+		intval($fetch_further_information),
+		dbesc($ffi_keyword_blacklist),
 		intval($contact_id),
 		intval(local_user())
 	);
@@ -133,6 +197,49 @@ function contacts_post(&$a) {
 
 }
 
+/*contact actions*/
+function _contact_update($contact_id) {
+	// pull feed and consume it, which should subscribe to the hub.
+	proc_run('php',"include/poller.php","$contact_id"); 
+}
+function _contact_block($contact_id, $orig_record) {
+	$blocked = (($orig_record['blocked']) ? 0 : 1);
+	$r = q("UPDATE `contact` SET `blocked` = %d WHERE `id` = %d AND `uid` = %d",
+		intval($blocked),
+		intval($contact_id),
+		intval(local_user())
+	);
+	return $r;
+
+}
+function _contact_ignore($contact_id, $orig_record) {
+	$readonly = (($orig_record['readonly']) ? 0 : 1);
+	$r = q("UPDATE `contact` SET `readonly` = %d WHERE `id` = %d AND `uid` = %d",
+		intval($readonly),
+		intval($contact_id),
+		intval(local_user())
+	);
+	return $r;
+}
+function _contact_archive($contact_id, $orig_record) {
+	$archived = (($orig_record['archive']) ? 0 : 1);
+	$r = q("UPDATE `contact` SET `archive` = %d WHERE `id` = %d AND `uid` = %d",
+		intval($archived),
+		intval($contact_id),
+		intval(local_user())
+	);
+	if ($archived) {
+		q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact_id), intval(local_user()));
+	}
+	return $r;
+}
+function _contact_drop($contact_id, $orig_record) {
+	require_once('include/Contact.php');
+	$a = get_app();
+
+	terminate_friendship($a->user,$a->contact,$orig_record);
+	contact_remove($orig_record['id']);
+}
 
 
 function contacts_content(&$a) {
@@ -165,70 +272,82 @@ function contacts_content(&$a) {
 			goaway($a->get_baseurl(true) . '/contacts');
 			return; // NOTREACHED
 		}
-		
-		if($cmd === 'update') {
 
-			// pull feed and consume it, which should subscribe to the hub.
-			proc_run('php',"include/poller.php","$contact_id");
+		if($cmd === 'update') {
+			_contact_update($contact_id);
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			// NOTREACHED
 		}
 
 		if($cmd === 'block') {
-			$blocked = (($orig_record[0]['blocked']) ? 0 : 1);
-			$r = q("UPDATE `contact` SET `blocked` = %d WHERE `id` = %d AND `uid` = %d LIMIT 1",
-				intval($blocked),
-				intval($contact_id),
-				intval(local_user())
-			);
+			$r = _contact_block($contact_id, $orig_record[0]);
 			if($r) {
-				//notice( t('Contact has been ') . (($blocked) ? t('blocked') : t('unblocked')) . EOL );
-				info( (($blocked) ? t('Contact has been blocked') : t('Contact has been unblocked')) . EOL );
+				$blocked = (($orig_record[0]['blocked']) ? 0 : 1);
+				info((($blocked) ? t('Contact has been blocked') : t('Contact has been unblocked')).EOL);
 			}
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}
 
 		if($cmd === 'ignore') {
-			$readonly = (($orig_record[0]['readonly']) ? 0 : 1);
-			$r = q("UPDATE `contact` SET `readonly` = %d WHERE `id` = %d AND `uid` = %d LIMIT 1",
-				intval($readonly),
-				intval($contact_id),
-				intval(local_user())
-			);
+			$r = _contact_ignore($contact_id, $orig_record[0]);
 			if($r) {
-				info( (($readonly) ? t('Contact has been ignored') : t('Contact has been unignored')) . EOL );
+				$readonly = (($orig_record[0]['readonly']) ? 0 : 1);
+				info((($readonly) ? t('Contact has been ignored') : t('Contact has been unignored')).EOL);
 			}
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}
 
 
 		if($cmd === 'archive') {
-			$archived = (($orig_record[0]['archive']) ? 0 : 1);
-			$r = q("UPDATE `contact` SET `archive` = %d WHERE `id` = %d AND `uid` = %d LIMIT 1",
-				intval($archived),
-				intval($contact_id),
-				intval(local_user())
-			);
-			if ($archived) {
-				q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact_id), intval(local_user()));
-			}
+			$r = _contact_archive($contact_id, $orig_record[0]);
 			if($r) {
-				//notice( t('Contact has been ') . (($archived) ? t('archived') : t('unarchived')) . EOL );
-				info( (($archived) ? t('Contact has been archived') : t('Contact has been unarchived')) . EOL );
+				$archived = (($orig_record[0]['archive']) ? 0 : 1);
+				info((($archived) ? t('Contact has been archived') : t('Contact has been unarchived')).EOL);
 			}
+
 			goaway($a->get_baseurl(true) . '/contacts/' . $contact_id);
 			return; // NOTREACHED
 		}
 
 		if($cmd === 'drop') {
 
-			require_once('include/Contact.php');
+			// Check if we should do HTML-based delete confirmation
+			if($_REQUEST['confirm']) {
+				// <form> can't take arguments in its "action" parameter
+				// so add any arguments as hidden inputs
+				$query = explode_querystring($a->query_string);
+				$inputs = array();
+				foreach($query['args'] as $arg) {
+					if(strpos($arg, 'confirm=') === false) {
+						$arg_parts = explode('=', $arg);
+						$inputs[] = array('name' => $arg_parts[0], 'value' => $arg_parts[1]);
+					}
+				}
 
-			terminate_friendship($a->user,$a->contact,$orig_record[0]);
+				$a->page['aside'] = '';
+				return replace_macros(get_markup_template('confirm.tpl'), array(
+					'$method' => 'get',
+					'$message' => t('Do you really want to delete this contact?'),
+					'$extra_inputs' => $inputs,
+					'$confirm' => t('Yes'),
+					'$confirm_url' => $query['base'],
+					'$confirm_name' => 'confirmed',
+					'$cancel' => t('Cancel'),
+				));
+			}
+			// Now check how the user responded to the confirmation query
+			if($_REQUEST['canceled']) {
+				if(x($_SESSION,'return_url'))
+					goaway($a->get_baseurl(true) . '/' . $_SESSION['return_url']);
+				else
+					goaway($a->get_baseurl(true) . '/contacts');
+			}
 
-			contact_remove($orig_record[0]['id']);
+			_contact_drop($contact_id, $orig_record[0]);
 			info( t('Contact has been removed.') . EOL );
 			if(x($_SESSION,'return_url'))
 				goaway($a->get_baseurl(true) . '/' . $_SESSION['return_url']);
@@ -238,14 +357,18 @@ function contacts_content(&$a) {
 		}
 	}
 
+
+
+	$_SESSION['return_url'] = $a->query_string;
+
 	if((x($a->data,'contact')) && (is_array($a->data['contact']))) {
 
 		$contact_id = $a->data['contact']['id'];
 		$contact = $a->data['contact'];
 
-		$editselect = 'exact';
-		if(intval(get_pconfig(local_user(),'system','plaintext')))
-			$editselect = 'none';
+		$editselect = 'none';
+		if( feature_enabled(local_user(),'richtext') )
+			$editselect = 'exact';
 
 		$a->page['htmlhead'] .= replace_macros(get_markup_template('contact_head.tpl'), array(
 			'$baseurl' => $a->get_baseurl(true),
@@ -269,7 +392,7 @@ function contacts_content(&$a) {
 				$dir_icon = 'images/larrow.gif';
 				$relation_text = t('You are sharing with %s');
 				break;
-	
+
 			case CONTACT_IS_SHARING;
 				$dir_icon = 'images/rarrow.gif';
 				$relation_text = t('%s is sharing with you');
@@ -345,7 +468,7 @@ function contacts_content(&$a) {
 
 		$lost_contact = (($contact['archive'] && $contact['term-date'] != '0000-00-00 00:00:00' && $contact['term-date'] < datetime_convert('','','now')) ? t('Communications lost with this contact!') : '');
 
-		$o .= replace_macros($tpl,array(
+		$o .= replace_macros($tpl, array(
 			'$header' => t('Contact Editor'),
 			'$tab_str' => $tab_str,
 			'$submit' => t('Submit'),
@@ -382,12 +505,17 @@ function contacts_content(&$a) {
 			'$ignored' => (($contact['readonly']) ? t('Currently ignored') : ''),
 			'$archived' => (($contact['archive']) ? t('Currently archived') : ''),
 			'$hidden' => array('hidden', t('Hide this contact from others'), ($contact['hidden'] == 1), t('Replies/likes to your public posts <strong>may</strong> still be visible')),
+			'$notify' => array('notify', t('Notification for new posts'), ($contact['notify_new_posts'] == 1), t('Send a notification of every new post of this contact')),
+			'$fetch_further_information' => array('fetch_further_information', t('Fetch further information for feeds'), $contact['fetch_further_information'], t('Fetch further information for feeds'),
+								array('0'=>t('Disabled'), '1'=>t('Fetch information'), '2'=>t('Fetch information and keywords'))),
+			'$ffi_keyword_blacklist' => $contact['ffi_keyword_blacklist'],
+			'$ffi_keyword_blacklist' => array('ffi_keyword_blacklist', t('Blacklisted keywords'), $contact['ffi_keyword_blacklist'], t('Comma separated list of keywords that should not be converted to hashtags, when "Fetch information and keywords" is selected')),
 			'$photo' => $contact['photo'],
 			'$name' => $contact['name'],
 			'$dir_icon' => $dir_icon,
 			'$alt_text' => $alt_text,
 			'$sparkle' => $sparkle,
-			'$url' => $url
+			'$url' => $url,
 
 		));
 
@@ -403,8 +531,6 @@ function contacts_content(&$a) {
 	$hidden = false;
 	$ignored = false;
 	$all = false;
-
-	$_SESSION['return_url'] = $a->query_string;
 
 	if(($a->argc == 2) && ($a->argv[1] === 'all')) {
 		$sql_extra = '';
@@ -493,7 +619,7 @@ function contacts_content(&$a) {
 		$search_txt = dbesc(protect_sprintf(preg_quote($search)));
 		$searching = true;
 	}
-	$sql_extra .= (($searching) ? " AND `name` REGEXP '$search_txt' " : "");
+	$sql_extra .= (($searching) ? " AND (name REGEXP '$search_txt' OR url REGEXP '$search_txt'  OR nick REGEXP '$search_txt') " : "");
 
 	if($nets)
 		$sql_extra .= sprintf(" AND network = '%s' ", dbesc($nets));
@@ -565,12 +691,13 @@ function contacts_content(&$a) {
 			);
 		}
 
-		
+
 
 	}
-	
+
 	$tpl = get_markup_template("contacts-template.tpl");
-	$o .= replace_macros($tpl,array(
+	$o .= replace_macros($tpl, array(
+		'$baseurl' => $a->get_baseurl(),
 		'$header' => t('Contacts') . (($nets) ? ' - ' . network_to_name($nets) : ''),
 		'$tabs' => $t,
 		'$total' => $total,
@@ -580,6 +707,14 @@ function contacts_content(&$a) {
 		'$submit' => t('Find'),
 		'$cmd' => $a->cmd,
 		'$contacts' => $contacts,
+		'$contact_drop_confirm' => t('Do you really want to delete this contact?'),
+		'$batch_actions' => array(
+			'contacts_batch_update' => t('Update'),
+			'contacts_batch_block' => t('Block')."/".t("Unblock"),
+			"contacts_batch_ignore" => t('Ignore')."/".t("Unignore"),
+			"contacts_batch_archive" => t('Archive')."/".t("Unarchive"),
+			"contacts_batch_drop" => t('Delete'),
+		),
 		'$paginate' => paginate($a),
 
 	)); 

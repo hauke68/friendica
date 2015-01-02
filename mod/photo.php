@@ -4,32 +4,10 @@ require_once('include/security.php');
 require_once('include/Photo.php');
 
 function photo_init(&$a) {
-
-	// To-Do:
-	// - checking with realpath
-	// - checking permissions
-	/*
-	$cache = get_config('system','itemcache');
-        if (($cache != '') and is_dir($cache)) {
-		$cachefile = $cache."/".$a->argc."-".$a->argv[1]."-".$a->argv[2]."-".$a->argv[3];
-		if (file_exists($cachefile)) {
-			$data = file_get_contents($cachefile);
-
-			if(function_exists('header_remove')) {
-				header_remove('Pragma');
-				header_remove('pragma');
-			}
-
-			header("Content-type: image/jpeg");
- 			header("Expires: " . gmdate("D, d M Y H:i:s", time() + (3600*24)) . " GMT");
-			header("Cache-Control: max-age=" . (3600*24));
-			echo $data;
-			killme();
-			// NOTREACHED
-		}
-	}*/
+	global $_SERVER;
 
 	$prvcachecontrol = false;
+	$file = "";
 
 	switch($a->argc) {
 		case 4:
@@ -43,11 +21,27 @@ function photo_init(&$a) {
 			break;
 		case 2:
 			$photo = $a->argv[1];
+			$file = $photo;
 			break;
 		case 1:
 		default:
 			killme();
 			// NOTREACHED
+	}
+
+	//	strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']) >= filemtime($localFileName)) {
+	if (isset($_SERVER['HTTP_IF_MODIFIED_SINCE'])) {
+		header('HTTP/1.1 304 Not Modified');
+		header("Last-Modified: " . gmdate("D, d M Y H:i:s", time()) . " GMT");
+		header('Etag: '.$_SERVER['HTTP_IF_NONE_MATCH']);
+	 	header("Expires: " . gmdate("D, d M Y H:i:s", time() + (31536000)) . " GMT");
+		header("Cache-Control: max-age=31536000");
+		if(function_exists('header_remove')) {
+			header_remove('Last-Modified');
+			header_remove('Expires');
+			header_remove('Cache-Control');
+		}
+		exit;
 	}
 
 	$default = 'images/person-175.jpg';
@@ -101,50 +95,41 @@ function photo_init(&$a) {
 		foreach( Photo::supportedTypes() as $m=>$e){
 			$photo = str_replace(".$e",'',$photo);
 		}
-	
+
 		if(substr($photo,-2,1) == '-') {
 			$resolution = intval(substr($photo,-1,1));
 			$photo = substr($photo,0,-2);
 		}
 
-		$r = q("SELECT `uid` FROM `photo` WHERE `resource-id` = '%s' AND `scale` = %d LIMIT 1",
+        // check if the photo exists and get the owner of the photo
+		$r = q("SELECT `uid` FROM `photo` WHERE `resource-id` = '%s' LIMIT 1",
 			dbesc($photo),
 			intval($resolution)
 		);
 		if(count($r)) {
-			
+
 			$sql_extra = permissions_sql($r[0]['uid']);
 
 			// Now we'll see if we can access the photo
 
-			$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `scale` = %d $sql_extra LIMIT 1",
+			$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `scale` <= %d $sql_extra ORDER BY scale DESC LIMIT 1",
 				dbesc($photo),
 				intval($resolution)
 			);
 
+			$public = ($r[0]['allow_cid'] == '') AND ($r[0]['allow_gid'] == '') AND ($r[0]['deny_cid']  == '') AND ($r[0]['deny_gid']  == '');
+
 			if(count($r)) {
+				$resolution = $r[0]['scale'];
 				$data = $r[0]['data'];
 				$mimetype = $r[0]['type'];
-			}
-			else {
-
-				// Does the picture exist? It may be a remote person with no credentials,
-				// but who should otherwise be able to view it. Show a default image to let 
-				// them know permissions was denied. It may be possible to view the image 
-				// through an authenticated profile visit.
-				// There won't be many completely unauthorised people seeing this because
-				// they won't have the photo link, so there's a reasonable chance that the person
-				// might be able to obtain permission to view it.
- 
-				$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `scale` = %d LIMIT 1",
-					dbesc($photo),
-					intval($resolution)
-				);
-				if(count($r)) {
-					$data = file_get_contents('images/nosign.jpg');
-					$mimetype = 'image/jpeg';
-					$prvcachecontrol = true;
-				}
+			} else {
+				// The picure exists. We already checked with the first query.
+				// obviously, this is not an authorized viev!
+				$data = file_get_contents('images/nosign.jpg');
+				$mimetype = 'image/jpeg';
+				$prvcachecontrol = true;
+				$public = false;
 			}
 		}
 	}
@@ -173,18 +158,17 @@ function photo_init(&$a) {
 		}
 	}
 
-	if(isset($customres) && $customres > 0 && $customres < 500) {
+	// Resize only if its not a GIF
+	if ($mime != "image/gif") {
 		$ph = new Photo($data, $mimetype);
 		if($ph->is_valid()) {
-			$ph->scaleImageSquare($customres);
+			if(isset($customres) && $customres > 0 && $customres < 500) {
+				$ph->scaleImageSquare($customres);
+			}
 			$data = $ph->imageString();
 			$mimetype = $ph->getType();
 		}
 	}
-
-	// Writing in cachefile
-	if (isset($cachefile) && $cachefile != '')
-		file_put_contents($cachefile, $data);
 
 	if(function_exists('header_remove')) {
 		header_remove('Pragma');
@@ -203,12 +187,24 @@ function photo_init(&$a) {
 
 	}
 	else {
-
-	 	header("Expires: " . gmdate("D, d M Y H:i:s", time() + (3600*24)) . " GMT");
-		header("Cache-Control: max-age=" . (3600*24));
-
+		header("Last-Modified: " . gmdate("D, d M Y H:i:s", time()) . " GMT");
+		header('Etag: "'.md5($data).'"');
+	 	header("Expires: " . gmdate("D, d M Y H:i:s", time() + (31536000)) . " GMT");
+		header("Cache-Control: max-age=31536000");
 	}
 	echo $data;
+
+	// If the photo is public and there is an existing photo directory store the photo there
+	if ($public and ($file != "")) {
+		// If the photo path isn't there, try to create it
+		if (!is_dir($_SERVER["DOCUMENT_ROOT"]."/photo"))
+			if (is_writable($_SERVER["DOCUMENT_ROOT"]))
+				mkdir($_SERVER["DOCUMENT_ROOT"]."/photo");
+
+		if (is_dir($_SERVER["DOCUMENT_ROOT"]."/photo"))
+			file_put_contents($_SERVER["DOCUMENT_ROOT"]."/photo/".$file, $data);
+	}
+
 	killme();
 	// NOTREACHED
 }

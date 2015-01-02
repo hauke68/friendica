@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS `contact` (
   `profile-id` int(11) NOT NULL DEFAULT '0' COMMENT 'which profile to display - 0 is public default',
   `bdyear` char(4) NOT NULL COMMENT 'birthday notify flag',
   `bd` date NOT NULL,
+  `notify_new_posts` TINYINT(1) NOT NULL DEFAULT '0',
+  `fetch_further_information` TINYINT(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `uid` (`uid`),
   KEY `self` (`self`),
@@ -238,6 +240,20 @@ CREATE TABLE IF NOT EXISTS `deliverq` (
   `contact` int(11) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `dsprphotoq`
+--
+
+CREATE TABLE `dsprphotoq` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int(11) NOT NULL,
+  `msg` mediumtext NOT NULL,
+  `attempt` tinyint(4) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
 
@@ -491,7 +507,7 @@ CREATE TABLE IF NOT EXISTS `intro` (
 
 CREATE TABLE IF NOT EXISTS `item` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `guid` char(64) NOT NULL,
+  `guid` char(255) NOT NULL,
   `uri` char(255) CHARACTER SET ascii NOT NULL,
   `uid` int(10) unsigned NOT NULL DEFAULT '0',
   `contact-id` int(10) unsigned NOT NULL DEFAULT '0',
@@ -546,7 +562,9 @@ CREATE TABLE IF NOT EXISTS `item` (
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
   `origin` tinyint(1) NOT NULL DEFAULT '0',
   `forum_mode` tinyint(1) NOT NULL DEFAULT '0',
+  `mention` tinyint(1) NOT NULL DEFAULT '0',
   `last-child` tinyint(1) unsigned NOT NULL DEFAULT '1',
+  `network` char(32) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `uri` (`uri`),
   KEY `uid` (`uid`),
@@ -575,6 +593,10 @@ CREATE TABLE IF NOT EXISTS `item` (
   KEY `uid_commented` (`uid`, `commented`),
   KEY `uid_created` (`uid`, `created`),
   KEY `uid_unseen` (`uid`, `unseen`),
+  KEY `mention` (`mention`),
+  KEY `resource-id` (`resource-id`),
+  KEY `event_id` (`event-id`),
+  KEY `network` (`network`),
   FULLTEXT KEY `title` (`title`),
   FULLTEXT KEY `body` (`body`),
   FULLTEXT KEY `allow_cid` (`allow_cid`),
@@ -777,6 +799,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
   `type` CHAR(128) NOT NULL DEFAULT 'image/jpeg',
   `height` smallint(6) NOT NULL,
   `width` smallint(6) NOT NULL,
+  `datasize` int(10) unsigned NOT NULL DEFAULT '0',
   `data` mediumblob NOT NULL,
   `scale` tinyint(3) NOT NULL,
   `profile` tinyint(1) NOT NULL DEFAULT '0',
@@ -789,6 +812,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
   KEY `resource-id` (`resource-id`),
   KEY `album` (`album`),
   KEY `scale` (`scale`),
+  KEY `datasize` (`datasize`),
   KEY `profile` (`profile`)
 ) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
@@ -1013,18 +1037,22 @@ CREATE TABLE IF NOT EXISTS `spam` (
 --
 
 CREATE TABLE IF NOT EXISTS `term` (
-  `tid` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `oid` INT UNSIGNED NOT NULL ,
-  `otype` TINYINT( 3 ) UNSIGNED NOT NULL ,
-  `type` TINYINT( 3 ) UNSIGNED NOT NULL ,
-  `term` CHAR( 255 ) NOT NULL ,
-  `url` CHAR( 255 ) NOT NULL, 
+  `tid` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `aid` int(10) unsigned NOT NULL DEFAULT '0',
+  `uid` int(10) unsigned NOT NULL DEFAULT '0',
+  `oid` int(10) unsigned NOT NULL,
+  `otype` tinyint(3) unsigned NOT NULL,
+  `type` tinyint(3) unsigned NOT NULL,
+  `term` char(255) NOT NULL,
+  `url` char(255) NOT NULL,
   PRIMARY KEY (`tid`),
-  KEY `oid` ( `oid` ),
-  KEY `otype` ( `otype` ),
-  KEY `type`  ( `type` ),
-  KEY `term`  ( `term` )
-) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+  KEY `oid` (`oid`),
+  KEY `otype` (`otype`),
+  KEY `type` (`type`),
+  KEY `term` (`term`),
+  KEY `uid` (`uid`),
+  KEY `aid` (`aid`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
 
@@ -1115,4 +1143,93 @@ CREATE TABLE IF NOT EXISTS `userd` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` char(255) NOT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tag`
+--
+
+CREATE TABLE IF NOT EXISTS `tag` (
+  `iid` int(11) NOT NULL,
+  `tag` char(255) NOT NULL,
+  `link` char(255) NOT NULL,
+  PRIMARY KEY (`iid`, `tag`),
+  KEY `tag` (`tag`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `push_subscriber`
+--
+
+CREATE TABLE IF NOT EXISTS `push_subscriber` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `uid` int(11) NOT NULL,
+  `callback_url` char(255) NOT NULL,
+  `topic` char(255) NOT NULL,
+  `nickname` char(255) NOT NULL,
+  `push` int(11) NOT NULL,
+  `last_update` datetime NOT NULL,
+  `secret` char(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `unique_contacts`
+--
+
+CREATE TABLE IF NOT EXISTS `unique_contacts` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `url` CHAR(255) NOT NULL,
+  `nick` CHAR(255) NOT NULL,
+  `name` CHAR(255) NOT NULL,
+  `avatar` CHAR(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `url` (`url`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `thread`
+--
+
+CREATE TABLE IF NOT EXISTS `thread` (
+  `iid` int(10) unsigned NOT NULL DEFAULT '0',
+  `uid` int(10) unsigned NOT NULL DEFAULT '0',
+  `contact-id` int(11) unsigned NOT NULL DEFAULT '0',
+  `created` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `edited` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `commented` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `received` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `changed` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `wall` tinyint(1) NOT NULL DEFAULT '0',
+  `private` tinyint(1) NOT NULL DEFAULT '0',
+  `pubmail` tinyint(1) NOT NULL DEFAULT '0',
+  `moderated` tinyint(1) NOT NULL DEFAULT '0',
+  `visible` tinyint(1) NOT NULL DEFAULT '0',
+  `spam` tinyint(1) NOT NULL DEFAULT '0',
+  `starred` tinyint(1) NOT NULL DEFAULT '0',
+  `bookmark` tinyint(1) NOT NULL DEFAULT '0',
+  `unseen` tinyint(1) NOT NULL DEFAULT '1',
+  `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `origin` tinyint(1) NOT NULL DEFAULT '0',
+  `forum_mode` tinyint(1) NOT NULL DEFAULT '0',
+  `mention` tinyint(1) NOT NULL DEFAULT '0',
+  `network` char(32) NOT NULL,
+  PRIMARY KEY (`iid`),
+  KEY `created` (`created`),
+  KEY `commented` (`commented`),
+  KEY `uid_network_commented` (`uid`,`network`,`commented`),
+  KEY `uid_network_created` (`uid`,`network`,`created`),
+  KEY `uid_contactid_commented` (`uid`,`contact-id`,`commented`),
+  KEY `uid_contactid_created` (`uid`,`contact-id`,`created`),
+  KEY `wall_private_received` (`wall`,`private`,`received`),
+  KEY `uid_created` (`uid`,`created`),
+  KEY `uid_commented` (`uid`,`commented`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;

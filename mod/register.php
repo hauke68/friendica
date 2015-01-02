@@ -1,5 +1,9 @@
 <?php
 
+require_once('include/enotify.php');
+require_once('include/bbcode.php');
+require_once('include/user.php');
+
 if(! function_exists('register_post')) {
 function register_post(&$a) {
 
@@ -21,7 +25,7 @@ function register_post(&$a) {
 
 	switch($a->config['register_policy']) {
 
-	
+
 	case REGISTER_OPEN:
 		$blocked = 0;
 		$verified = 1;
@@ -42,9 +46,7 @@ function register_post(&$a) {
 		$verified = 0;
 		break;
 	}
-    
 
-	require_once('include/user.php');
 
 	$arr = $_POST;
 
@@ -59,7 +61,7 @@ function register_post(&$a) {
 	}
 
 	$user = $result['user'];
- 
+
 	if($netpublish && $a->config['register_policy'] != REGISTER_APPROVE) {
 		$url = $a->get_baseurl() . '/profile/' . $user['nickname'];
 		proc_run('php',"include/directory.php","$url");
@@ -77,28 +79,25 @@ function register_post(&$a) {
 			set_pconfig($user['uid'],'system','invites_remaining',$num_invites);
 		}
 
-		$email_tpl = get_intltext_template("register_open_eml.tpl");
-		$email_tpl = replace_macros($email_tpl, array(
-				'$sitename' => $a->config['sitename'],
-				'$siteurl' =>  $a->get_baseurl(),
-				'$username' => $user['username'],
-				'$email' => $user['email'],
-				'$password' => $result['password'],
-				'$uid' => $user['uid'] ));
-
-		$res = mail($user['email'], sprintf(t('Registration details for %s'), $a->config['sitename']),
-			$email_tpl, 
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
-				. 'Content-type: text/plain; charset=UTF-8' . "\n"
-				. 'Content-transfer-encoding: 8bit' );
-
+		$res = send_register_open_eml(
+			$user['email'],
+			$a->config['sitename'],
+			$a->get_baseurl(),
+			$user['username'],
+			$result['password']);
 
 		if($res) {
 			info( t('Registration successful. Please check your email for further instructions.') . EOL ) ;
 			goaway(z_root());
 		}
 		else {
-			notice( t('Failed to send email message. Here is the message that failed.') . $email_tpl . EOL );
+			notice(
+				sprintf(
+					t('Failed to send email message. Here your accout details:<br> login: %s<br> password: %s<br><br>You can change your password after login.'),
+					 $user['email'],
+					 $result['password']
+					 ). EOL
+			);
 		}
 	}
 	elseif($a->config['register_policy'] == REGISTER_APPROVE) {
@@ -116,42 +115,39 @@ function register_post(&$a) {
 			dbesc($lang)
 		);
 
-		$r = q("SELECT `language` FROM `user` WHERE `email` = '%s' LIMIT 1",
-			dbesc($a->config['admin_email'])
-		);
-		if(count($r))
-			push_lang($r[0]['language']);
-		else
-			push_lang('en');
-
+		// invite system
 		if($using_invites && $invite_id) {
 			q("delete * from register where hash = '%s' limit 1", dbesc($invite_id));
 			set_pconfig($user['uid'],'system','invites_remaining',$num_invites);
 		}
 
-		$email_tpl = get_intltext_template("register_verify_eml.tpl");
-		$email_tpl = replace_macros($email_tpl, array(
-				'$sitename' => $a->config['sitename'],
-				'$siteurl' =>  $a->get_baseurl(),
-				'$username' => $user['username'],
-				'$email' => $user['email'],
-				'$password' => $result['password'],
-				'$uid' => $user['uid'],
-				'$hash' => $hash
-		 ));
+		// send email to admins
+		$admin_mail_list = "'".implode("','", array_map(dbesc, explode(",", str_replace(" ", "", $a->config['admin_email']))))."'";
+		$adminlist = q("SELECT uid, language, email FROM user WHERE email IN (%s)",
+			$admin_mail_list
+		);
 
-		$res = mail($a->config['admin_email'], sprintf(t('Registration request at %s'), $a->config['sitename']),
-			$email_tpl,
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
-				. 'Content-type: text/plain; charset=UTF-8' . "\n"
-				. 'Content-transfer-encoding: 8bit' );
 
-		pop_lang();
-
-		if($res) {
-			info( t('Your registration is pending approval by the site owner.') . EOL ) ;
-			goaway(z_root());
+		foreach ($adminlist as $admin) {
+			notification(array(
+				'type' => NOTIFY_SYSTEM,
+				'event' => 'SYSTEM_REGISTER_REQUEST',
+				'source_name' => $user['username'],
+				'source_mail' => $user['email'],
+				'source_nick' => $user['nickname'],
+				'source_link' => $a->get_baseurl()."/admin/users/",
+				'link' => $a->get_baseurl()."/admin/users/",
+				'source_photo' => $a->get_baseurl() . "/photo/avatar/".$user['uid'].".jpg",
+				'to_email' => $admin['email'],
+				'uid' => $admin['uid'],
+				'language' => ($admin['language']?$admin['language']:'en'))
+			);
 		}
+
+
+		info( t('Your registration is pending approval by the site owner.') . EOL ) ;
+		goaway(z_root());
+
 
 	}
 
@@ -239,7 +235,6 @@ function register_content(&$a) {
 		));
 	}
 
-
 	$license = '';
 
 	$o = get_markup_template("register.tpl");
@@ -259,7 +254,7 @@ function register_content(&$a) {
 		'$realpeople' => $realpeople,
 		'$regtitle'  => t('Registration'),
 		'$registertext' =>((x($a->config,'register_text'))
-			? '<div class="error-message">' . $a->config['register_text'] . '</div>'
+			? bbcode($a->config['register_text'])
 			: "" ),
 		'$fillwith'  => $fillwith,
 		'$fillext'   => $fillext,
@@ -267,7 +262,7 @@ function register_content(&$a) {
 		'$openid'    => $openid_url,
 		'$namelabel' => t('Your Full Name ' . "\x28" . 'e.g. Joe Smith' . "\x29" . ': '),
 		'$addrlabel' => t('Your Email Address: '),
-		'$nickdesc'  => t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.'),
+		'$nickdesc'  => str_replace('$sitename',$a->get_hostname(),t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.')),
 		'$nicklabel' => t('Choose a nickname: '),
 		'$photo'     => $photo,
 		'$publish'   => $profile_publish,
@@ -277,7 +272,9 @@ function register_content(&$a) {
 		'$nickname'  => $nickname,
 		'$license'   => $license,
 		'$sitename'  => $a->get_hostname(),
-      
+		'$importh'   => t('Import'),
+		'$importt'   => t('Import your profile to this friendica instance'),
+
 	));
 	return $o;
 

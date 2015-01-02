@@ -5,7 +5,7 @@ require_once("include/datetime.php");
 function ping_init(&$a) {
 
 	header("Content-type: text/xml");
-	
+
 	echo "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>
 		<result>";
 
@@ -59,17 +59,17 @@ function ping_init(&$a) {
 		$home = 0;
 		$network = 0;
 
-		$r = q("SELECT `item`.`id`,`item`.`parent`, `item`.`verb`, `item`.`wall`, `item`.`author-name`, 
-				`item`.`contact-id`, `item`.`author-link`, `item`.`author-avatar`, `item`.`created`, `item`.`object`, 
-				`pitem`.`author-name` as `pname`, `pitem`.`author-link` as `plink` 
+		$r = q("SELECT `item`.`id`,`item`.`parent`, `item`.`verb`, `item`.`wall`, `item`.`author-name`,
+				`item`.`contact-id`, `item`.`author-link`, `item`.`author-avatar`, `item`.`created`, `item`.`object`,
+				`pitem`.`author-name` as `pname`, `pitem`.`author-link` as `plink`
 				FROM `item` INNER JOIN `item` as `pitem` ON  `pitem`.`id`=`item`.`parent`
-				WHERE `item`.`unseen` = 1 AND `item`.`visible` = 1 AND 
+				WHERE `item`.`unseen` = 1 AND `item`.`visible` = 1 AND
 				 `item`.`deleted` = 0 AND `item`.`uid` = %d AND `pitem`.`parent` != 0
 				ORDER BY `item`.`created` DESC",
 			intval(local_user())
 		);
 
-		if(count($r)) {		
+		if(count($r)) {
 
 			$arr = array('items' => $r);
 			call_hooks('network_ping', $arr);
@@ -95,11 +95,11 @@ function ping_init(&$a) {
 						break;
 					case ACTIVITY_FRIEND:
 						$obj = parse_xml_string($xmlhead.$it['object']);
-						$it['fname'] = $obj->title;			
+						$it['fname'] = $obj->title;
 						$friends[] = $it;
 						break;
 					default:
-						if ($it['parent']!=$it['id']) { 
+						if ($it['parent']!=$it['id']) {
 							$comments[] = $it;
 						} else {
 							if(! $it['wall'])
@@ -109,19 +109,19 @@ function ping_init(&$a) {
 			}
 		}
 
-		$intros1 = q("SELECT  `intro`.`id`, `intro`.`datetime`, 
-			`fcontact`.`name`, `fcontact`.`url`, `fcontact`.`photo` 
+		$intros1 = q("SELECT  `intro`.`id`, `intro`.`datetime`,
+			`fcontact`.`name`, `fcontact`.`url`, `fcontact`.`photo`
 			FROM `intro` LEFT JOIN `fcontact` ON `intro`.`fid` = `fcontact`.`id`
 			WHERE `intro`.`uid` = %d  AND `intro`.`blocked` = 0 AND `intro`.`ignore` = 0 AND `intro`.`fid`!=0",
 			intval(local_user())
 		);
-		$intros2 = q("SELECT `intro`.`id`, `intro`.`datetime`, 
-			`contact`.`name`, `contact`.`url`, `contact`.`photo` 
+		$intros2 = q("SELECT `intro`.`id`, `intro`.`datetime`,
+			`contact`.`name`, `contact`.`url`, `contact`.`photo`
 			FROM `intro` LEFT JOIN `contact` ON `intro`.`contact-id` = `contact`.`id`
 			WHERE `intro`.`uid` = %d  AND `intro`.`blocked` = 0 AND `intro`.`ignore` = 0 AND `intro`.`contact-id`!=0",
 			intval(local_user())
 		);
-		
+
 		$intro = count($intros1) + count($intros2);
 		$intros = $intros1+$intros2;
 
@@ -135,7 +135,7 @@ function ping_init(&$a) {
 		);
 		if($mails)
 			$mail = $mails[0]['total'];
-		
+
 		if ($a->config['register_policy'] == REGISTER_APPROVE && is_site_admin()){
 			$regs = q("SELECT `contact`.`name`, `contact`.`url`, `contact`.`micro`, `register`.`created`, COUNT(*) as `total` FROM `contact` RIGHT JOIN `register` ON `register`.`uid`=`contact`.`uid` WHERE `contact`.`self`=1");
 			if($regs)
@@ -188,6 +188,8 @@ function ping_init(&$a) {
 
 
 		function xmlize($href, $name, $url, $photo, $date, $seen, $message){
+			require_once("mod/proxy.php");
+			$photo = proxy_url($photo);
 			$data = array('href' => &$href, 'name' => &$name, 'url'=>&$url, 'photo'=>&$photo, 'date'=>&$date, 'seen'=>&$seen, 'messsage'=>&$message);
 			call_hooks('ping_xmlize', $data);
 			$notsxml = '<note href="%s" name="%s" url="%s" photo="%s" date="%s" seen="%s" >%s</note>';
@@ -195,7 +197,7 @@ function ping_init(&$a) {
 				xmlify($href), xmlify($name), xmlify($url), xmlify($photo), xmlify($date), xmlify($seen), xmlify($message)
 			);
 		}
-		
+
 		echo "<intro>$intro</intro>
 				<mail>$mail</mail>
 				<net>$network</net>
@@ -208,7 +210,7 @@ function ping_init(&$a) {
 			<events-today>$events_today</events-today>
 			<birthdays>$birthdays</birthdays>
 			<birthdays-today>$birthdays_today</birthdays-today>\r\n";
-		
+
 		$tot = $mail+$intro+$register+count($comments)+count($likes)+count($dislikes)+count($friends)+count($posts)+count($tags);
 
 		require_once('include/bbcode.php');
@@ -222,7 +224,7 @@ function ping_init(&$a) {
 					if($zz['seen'] == 0)
 						$sysnotify ++;
 				}
-			}						
+			}
 
 			echo '	<notif count="'. $sysnotify .'">';
 			if(count($z)) {
@@ -234,7 +236,7 @@ function ping_init(&$a) {
 
 		if($firehose) {
 			if ($intro>0){
-				foreach ($intros as $i) { 
+				foreach ($intros as $i) {
 					echo xmlize( $a->get_baseurl().'/notifications/intros/'.$i['id'], $i['name'], $i['url'], $i['photo'], relative_date($i['datetime']), 'notify-unseen',t("{0} wants to be your friend") );
 				};
 			}

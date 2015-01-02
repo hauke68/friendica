@@ -1,7 +1,7 @@
 <?php
 
 function hub_return($valid,$body) {
-	
+
 	if($valid) {
 		header($_SERVER["SERVER_PROTOCOL"] . ' 200 ' . 'OK');
 		echo $body;
@@ -18,7 +18,7 @@ function hub_return($valid,$body) {
 // when receiving an XML feed, always return OK
 
 function hub_post_return() {
-	
+
 	header($_SERVER["SERVER_PROTOCOL"] . ' 200 ' . 'OK');
 	killme();
 
@@ -69,7 +69,7 @@ function pubsub_init(&$a) {
 
 		if(! link_compare($hub_topic,$r[0]['poll'])) {
 			logger('pubsub: hub topic ' . $hub_topic . ' != ' . $r[0]['poll']);
-			// should abort but let's humour them. 			
+			// should abort but let's humour them.
 		}
 
 		$contact = $r[0];
@@ -79,18 +79,18 @@ function pubsub_init(&$a) {
 
 		if($hub_mode === 'unsubscribe') {
 			if(! strlen($hub_verify)) {
-				logger('pubsub: bogus unsubscribe'); 
+				logger('pubsub: bogus unsubscribe');
 				hub_return(false, '');
 			}
 			logger('pubsub: unsubscribe success');
 		}
 
-		$r = q("UPDATE `contact` SET `subhub` = %d WHERE `id` = %d LIMIT 1",
+		$r = q("UPDATE `contact` SET `subhub` = %d WHERE `id` = %d",
 			intval($subscribe),
 			intval($contact['id'])
 		);
 
- 		hub_return(true, $hub_challenge);		
+ 		hub_return(true, $hub_challenge);
 	}
 }
 
@@ -121,15 +121,16 @@ function pubsub_post(&$a) {
 	$importer = $r[0];
 
 	$r = q("SELECT * FROM `contact` WHERE `subhub` = 1 AND `id` = %d AND `uid` = %d 
-		AND ( `rel` = %d OR `rel` = %d ) AND `blocked` = 0 AND `readonly` = 0 LIMIT 1",
+		AND ( `rel` = %d OR `rel` = %d OR network = '%s' ) AND `blocked` = 0 AND `readonly` = 0 LIMIT 1",
 		intval($contact_id),
 		intval($importer['uid']),
 		intval(CONTACT_IS_SHARING),
-		intval(CONTACT_IS_FRIEND)	
+		intval(CONTACT_IS_FRIEND),
+		dbesc(NETWORK_FEED)
 	);
 
 	if(! count($r)) {
-		logger('pubsub: no contact record - ignored');
+		logger('pubsub: no contact record for "'.$nick.' ('.$contact_id.')" - ignored. '.$xml);
 		hub_post_return();
 	}
 

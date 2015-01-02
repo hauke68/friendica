@@ -28,7 +28,7 @@ function crepair_init(&$a) {
 			$o .= '</div>';
 			$a->page['aside'] .= $o;
 
-	}	
+	}
 }
 
 
@@ -59,24 +59,28 @@ function crepair_post(&$a) {
 	$poll    = ((x($_POST,'poll')) ? $_POST['poll'] : '');
 	$attag   = ((x($_POST,'attag')) ? $_POST['attag'] : '');
 	$photo   = ((x($_POST,'photo')) ? $_POST['photo'] : '');
+	$remote_self = ((x($_POST,'remote_self')) ? $_POST['remote_self'] : false);
+	$nurl    = normalise_link($url);
 
-	$r = q("UPDATE `contact` SET `name` = '%s', `nick` = '%s', `url` = '%s', `request` = '%s', `confirm` = '%s', `notify` = '%s', `poll` = '%s', `attag` = '%s' 
-		WHERE `id` = %d AND `uid` = %d LIMIT 1",
+	$r = q("UPDATE `contact` SET `name` = '%s', `nick` = '%s', `url` = '%s', `nurl` = '%s', `request` = '%s', `confirm` = '%s', `notify` = '%s', `poll` = '%s', `attag` = '%s' , `remote_self` = %d
+		WHERE `id` = %d AND `uid` = %d",
 		dbesc($name),
 		dbesc($nick),
 		dbesc($url),
+		dbesc($nurl),
 		dbesc($request),
 		dbesc($confirm),
 		dbesc($notify),
 		dbesc($poll),
 		dbesc($attag),
+		intval($remote_self),
 		intval($contact['id']),
 		local_user()
 	);
 
 	if($photo) {
 		logger('mod-crepair: updating photo from ' . $photo);
-		require_once("Photo.php");
+		require_once("include/Photo.php");
 
 		$photos = import_profile_photo($photo,local_user(),$contact['id']);
 
@@ -86,7 +90,7 @@ function crepair_post(&$a) {
 			`name-date` = '%s',
 			`uri-date` = '%s',
 			`avatar-date` = '%s'
-			WHERE `id` = %d LIMIT 1
+			WHERE `id` = %d
 			",
 			dbesc($photos[0]),
 			dbesc($photos[1]),
@@ -143,6 +147,19 @@ function crepair_content(&$a) {
 
 	$o .= EOL . '<a href="contacts/' . $cid . '">' . t('Return to contact editor') . '</a>' . EOL;
 
+	$allow_remote_self = get_config('system','allow_users_remote_self');
+
+	// Disable remote self for everything except feeds.
+	// There is an issue when you repeat an item from maybe twitter and you got comments from friendica and twitter
+	// Problem is, you couldn't reply to both networks.
+	if (!in_array($contact['network'], array(NETWORK_FEED, NETWORK_DFRN, NETWORK_DIASPORA)))
+		$allow_remote_self = false;
+
+	if ($contact['network'] == NETWORK_FEED)
+		$remote_self_options = array('0'=>t('No mirroring'), '1'=>t('Mirror as forwarded posting'), '2'=>t('Mirror as my own posting'));
+	else
+		$remote_self_options = array('0'=>t('No mirroring'), '2'=>t('Mirror as my own posting'));
+
 	$tpl = get_markup_template('crepair.tpl');
 	$o .= replace_macros($tpl, array(
 		'$label_name' => t('Name'),
@@ -154,6 +171,9 @@ function crepair_content(&$a) {
 		'$label_notify' => t('Notification Endpoint URL'),
 		'$label_poll' => t('Poll/Feed URL'),
 		'$label_photo' => t('New photo from this URL'),
+		'$label_remote_self' => t('Remote Self'),
+		'$allow_remote_self' => $allow_remote_self,
+		'$remote_self' => array('remote_self', t('Mirror postings from this contact'), $contact['remote_self'], t('Mark this contact as remote_self, this will cause friendica to repost new entries from this contact.'), $remote_self_options),
 		'$contact_name' => $contact['name'],
 		'$contact_nick' => $contact['nick'],
 		'$contact_id'   => $contact['id'],
@@ -164,7 +184,7 @@ function crepair_content(&$a) {
 		'$poll'         => $contact['poll'],
 		'$contact_attag'  => $contact['attag'],
 		'$lbl_submit'   => t('Submit')
-	));
+	    ));
 
 	return $o;
 

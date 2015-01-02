@@ -48,9 +48,9 @@ function new_contact($uid,$url,$interactive = false) {
 				$myaddr = bin2hex($a->get_baseurl() . '/profile/' . $a->user['nickname']);
 			else
 				$myaddr = bin2hex($a->user['nickname'] . '@' . $a->get_hostname());
- 
+
 			goaway($ret['request'] . "&addr=$myaddr");
-		
+
 			// NOTREACHED
 		}
 	}
@@ -61,7 +61,7 @@ function new_contact($uid,$url,$interactive = false) {
 			return $result;
 		}
 	}
-	
+
 
 
 
@@ -111,7 +111,7 @@ function new_contact($uid,$url,$interactive = false) {
 
 	if($ret['network'] === NETWORK_MAIL) {
 		$writeable = 1;
-		
+
 	}
 	if($ret['network'] === NETWORK_DIASPORA)
 		$writeable = 1;
@@ -123,13 +123,13 @@ function new_contact($uid,$url,$interactive = false) {
 	$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `poll` = '%s' LIMIT 1",
 		intval($uid),
 		dbesc($ret['poll'])
-	);			
+	);
 
 
 	if(count($r)) {
 		// update contact
 		if($r[0]['rel'] == CONTACT_IS_FOLLOWER || ($network === NETWORK_DIASPORA && $r[0]['rel'] == CONTACT_IS_SHARING)) {
-			q("UPDATE `contact` SET `rel` = %d , `subhub` = %d, `readonly` = 0 WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			q("UPDATE `contact` SET `rel` = %d , `subhub` = %d, `readonly` = 0 WHERE `id` = %d AND `uid` = %d",
 				intval(CONTACT_IS_FRIEND),
 				intval($subhub),
 				intval($r[0]['id']),
@@ -218,17 +218,17 @@ function new_contact($uid,$url,$interactive = false) {
 		group_add_member($uid,'',$contact_id,$g[0]['def_gid']);
 	}
 
-	require_once("Photo.php");
+	require_once("include/Photo.php");
 
 	$photos = import_profile_photo($ret['photo'],$uid,$contact_id);
 
-	$r = q("UPDATE `contact` SET `photo` = '%s', 
+	$r = q("UPDATE `contact` SET `photo` = '%s',
 			`thumb` = '%s',
-			`micro` = '%s', 
-			`name-date` = '%s', 
-			`uri-date` = '%s', 
+			`micro` = '%s',
+			`name-date` = '%s',
+			`uri-date` = '%s',
 			`avatar-date` = '%s'
-			WHERE `id` = %d LIMIT 1
+			WHERE `id` = %d
 		",
 			dbesc($photos[0]),
 			dbesc($photos[1]),
@@ -237,7 +237,7 @@ function new_contact($uid,$url,$interactive = false) {
 			dbesc(datetime_convert()),
 			dbesc(datetime_convert()),
 			intval($contact_id)
-		);			
+		);
 
 
 	// pull feed and consume it, which should subscribe to the hub.
@@ -262,7 +262,7 @@ function new_contact($uid,$url,$interactive = false) {
 		'$ostat_follow' => ''
 	));
 
-	$r = q("SELECT `contact`.*, `user`.* FROM `contact` LEFT JOIN `user` ON `contact`.`uid` = `user`.`uid` 
+	$r = q("SELECT `contact`.*, `user`.* FROM `contact` INNER JOIN `user` ON `contact`.`uid` = `user`.`uid`
 			WHERE `user`.`uid` = %d AND `contact`.`self` = 1 LIMIT 1",
 			intval($uid)
 	);

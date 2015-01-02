@@ -2,7 +2,6 @@
 
 require_once('include/datetime.php');
 
-
 /*
  * poco_load
  *
@@ -93,8 +92,8 @@ function poco_load($cid,$uid = 0,$zcid = 0,$url = null) {
 		}
 
 		if((! $name) || (! $profile_url) || (! $profile_photo))
-			continue; 
-		 
+			continue;
+
 		$x = q("select * from `gcontact` where `nurl` = '%s' limit 1",
 			dbesc(normalise_link($profile_url))
 		);
@@ -103,8 +102,8 @@ function poco_load($cid,$uid = 0,$zcid = 0,$url = null) {
 			$gcid = $x[0]['id'];
 
 			if($x[0]['name'] != $name || $x[0]['photo'] != $profile_photo) {
-				q("update gcontact set `name` = '%s', `photo` = '%s', `connect` = '%s', `url` = '%s' 
-					where `nurl` = '%s' limit 1",
+				q("update gcontact set `name` = '%s', `photo` = '%s', `connect` = '%s', `url` = '%s'
+					where `nurl` = '%s'",
 					dbesc($name),
 					dbesc($profile_photo),
 					dbesc($connect_url),
@@ -147,7 +146,7 @@ function poco_load($cid,$uid = 0,$zcid = 0,$url = null) {
 			);
 		}
 		else {
-			q("update glink set updated = '%s' where `cid` = %d and `uid` = %d and `gcid` = %d and zcid = %d limit 1",
+			q("update glink set updated = '%s' where `cid` = %d and `uid` = %d and `gcid` = %d and zcid = %d",
 				dbesc(datetime_convert()),
 				intval($cid),
 				intval($uid),
@@ -171,7 +170,7 @@ function poco_load($cid,$uid = 0,$zcid = 0,$url = null) {
 function count_common_friends($uid,$cid) {
 
 	$r = q("SELECT count(*) as `total`
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`cid` = %d and `glink`.`uid` = %d
 		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 and id != %d ) ",
 		intval($cid),
@@ -196,7 +195,7 @@ function common_friends($uid,$cid,$start = 0,$limit=9999,$shuffle = false) {
 		$sql_extra = " order by `gcontact`.`name` asc "; 
 
 	$r = q("SELECT `gcontact`.* 
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`cid` = %d and `glink`.`uid` = %d
 		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 and id != %d ) 
 		$sql_extra limit %d, %d",
@@ -216,7 +215,7 @@ function common_friends($uid,$cid,$start = 0,$limit=9999,$shuffle = false) {
 function count_common_friends_zcid($uid,$zcid) {
 
 	$r = q("SELECT count(*) as `total` 
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`zcid` = %d
 		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 ) ",
 		intval($zcid),
@@ -237,7 +236,7 @@ function common_friends_zcid($uid,$zcid,$start = 0, $limit = 9999,$shuffle = fal
 		$sql_extra = " order by `gcontact`.`name` asc "; 
 
 	$r = q("SELECT `gcontact`.* 
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`zcid` = %d
 		and `gcontact`.`nurl` in (select nurl from contact where uid = %d and self = 0 and blocked = 0 and hidden = 0 ) 
 		$sql_extra limit %d, %d",
@@ -255,7 +254,7 @@ function common_friends_zcid($uid,$zcid,$start = 0, $limit = 9999,$shuffle = fal
 function count_all_friends($uid,$cid) {
 
 	$r = q("SELECT count(*) as `total`
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`cid` = %d and `glink`.`uid` = %d ",
 		intval($cid),
 		intval($uid)
@@ -271,7 +270,7 @@ function count_all_friends($uid,$cid) {
 function all_friends($uid,$cid,$start = 0, $limit = 80) {
 
 	$r = q("SELECT `gcontact`.* 
-		FROM `glink` left join `gcontact` on `glink`.`gcid` = `gcontact`.`id`
+		FROM `glink` INNER JOIN `gcontact` on `glink`.`gcid` = `gcontact`.`id`
 		where `glink`.`cid` = %d and `glink`.`uid` = %d 
 		order by `gcontact`.`name` asc LIMIT %d, %d ",
 		intval($cid),
@@ -291,7 +290,7 @@ function suggestion_query($uid, $start = 0, $limit = 80) {
 		return array();
 
 	$r = q("SELECT count(glink.gcid) as `total`, gcontact.* from gcontact 
-		left join glink on glink.gcid = gcontact.id 
+		INNER JOIN glink on glink.gcid = gcontact.id 
 		where uid = %d and not gcontact.nurl in ( select nurl from contact where uid = %d )
 		and not gcontact.name in ( select name from contact where uid = %d )
 		and not gcontact.id in ( select gcid from gcign where uid = %d )
@@ -308,7 +307,7 @@ function suggestion_query($uid, $start = 0, $limit = 80) {
 		return $r;
 
 	$r2 = q("SELECT gcontact.* from gcontact 
-		left join glink on glink.gcid = gcontact.id 
+		INNER JOIN glink on glink.gcid = gcontact.id 
 		where glink.uid = 0 and glink.cid = 0 and glink.zcid = 0 and not gcontact.nurl in ( select nurl from contact where uid = %d )
 		and not gcontact.name in ( select name from contact where uid = %d )
 		and not gcontact.id in ( select gcid from gcign where uid = %d )

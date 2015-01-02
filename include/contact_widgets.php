@@ -1,11 +1,12 @@
 <?php
 
-function follow_widget() {
+function follow_widget($value = "") {
 
 	return replace_macros(get_markup_template('follow.tpl'),array(
 		'$connect' => t('Add New Contact'),
 		'$desc' => t('Enter address or web location'),
 		'$hint' => t('Example: bob@example.com, http://example.com/barbara'),
+		'$value' => $value,
 		'$follow' => t('Connect')
 	));
 
@@ -47,8 +48,10 @@ function networks_widget($baseurl,$selected = '') {
 	if(! local_user())
 		return '';
 
-	
-	$r = q("select distinct(network) from contact where uid = %d and self = 0",
+	if(! feature_enabled(local_user(),'networks'))
+		return '';
+
+	$r = q("SELECT DISTINCT(`network`) FROM `contact` WHERE `uid` = %d AND `self` = 0 ORDER BY `network`",
 		intval(local_user())
 	);
 
@@ -80,6 +83,9 @@ function fileas_widget($baseurl,$selected = '') {
 	if(! local_user())
 		return '';
 
+	if(! feature_enabled(local_user(),'filing'))
+		return '';
+
 	$saved = get_pconfig(local_user(),'system','filetags');
 	if(! strlen($saved))
 		return;
@@ -106,7 +112,11 @@ function fileas_widget($baseurl,$selected = '') {
 }
 
 function categories_widget($baseurl,$selected = '') {
+
 	$a = get_app();
+
+	if(! feature_enabled($a->profile['profile_uid'],'categories'))
+		return '';
 
 	$saved = get_pconfig($a->profile['profile_uid'],'system','filetags');
 	if(! strlen($saved))

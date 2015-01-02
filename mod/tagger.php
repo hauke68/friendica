@@ -60,9 +60,9 @@ function tagger_content(&$a) {
 	$uri = item_new_uri($a->get_hostname(),$owner_uid);
 	$xterm = xmlify($term);
 	$post_type = (($item['resource-id']) ? t('photo') : t('status'));
-	$targettype = (($item['resource-id']) ? ACTIVITY_OBJ_PHOTO : ACTIVITY_OBJ_NOTE ); 
+	$targettype = (($item['resource-id']) ? ACTIVITY_OBJ_PHOTO : ACTIVITY_OBJ_NOTE );
 
-	$link = xmlify('<link rel="alternate" type="text/html" href="' 
+	$link = xmlify('<link rel="alternate" type="text/html" href="'
 		. $a->get_baseurl() . '/display/' . $owner['nickname'] . '/' . $item['id'] . '" />' . "\n") ;
 
 	$body = xmlify($item['body']);
@@ -136,25 +136,39 @@ EOT;
 	$arr['last-child'] = 1;
 	$arr['origin'] = 1;
 
-	$post_id = item_store($arr);	
+	$post_id = item_store($arr);
 
-	q("UPDATE `item` set plink = '%s' where id = %d limit 1",
-		dbesc($a->get_baseurl() . '/display/' . $owner_nick . '/' . $post_id),
-		intval($post_id)
-	);
-		
+//	q("UPDATE `item` set plink = '%s' where id = %d",
+//		dbesc($a->get_baseurl() . '/display/' . $owner_nick . '/' . $post_id),
+//		intval($post_id)
+//	);
+
 
 	if(! $item['visible']) {
-		$r = q("UPDATE `item` SET `visible` = 1 WHERE `id` = %d AND `uid` = %d LIMIT 1",
+		$r = q("UPDATE `item` SET `visible` = 1 WHERE `id` = %d AND `uid` = %d",
 			intval($item['id']),
 			intval($owner_uid)
 		);
-	}			
+	}
 
-	if((! $blocktags) && (! stristr($item['tag'], ']' . $term . '[' ))) {
-		q("update item set tag = '%s' where id = %d limit 1",
+	$term_objtype = (($item['resource-id']) ? TERM_OBJ_PHOTO : TERM_OBJ_POST );
+        $t = q("SELECT count(tid) as tcount FROM term WHERE oid=%d AND term='%s'",
+                intval($item['id']),
+                dbesc($term)
+        );
+	if((! $blocktags) && $t[0]['tcount']==0 ) {
+		/*q("update item set tag = '%s' where id = %d",
 			dbesc($item['tag'] . (strlen($item['tag']) ? ',' : '') . '#[url=' . $a->get_baseurl() . '/search?tag=' . $term . ']'. $term . '[/url]'),
 			intval($item['id'])
+		);*/
+
+		q("INSERT INTO term (oid, otype, type, term, url, uid) VALUE (%d, %d, %d, '%s', '%s', %d)",
+		   intval($item['id']),
+		   $term_objtype,
+		   TERM_HASHTAG,
+		   dbesc($term),
+		   dbesc($a->get_baseurl() . '/search?tag=' . $term),
+		   intval($owner_uid)
 		);
 	}
 
@@ -167,15 +181,30 @@ EOT;
 		$x = q("SELECT `blocktags` FROM `user` WHERE `uid` = %d limit 1",
 			intval($r[0]['uid'])
 		);
-		if(count($x) && !$x[0]['blocktags'] && (! stristr($r[0]['tag'], ']' . $term . '['))) {
-			q("update item set tag = '%s' where id = %d limit 1",
+		$t = q("SELECT count(tid) as tcount FROM term WHERE oid=%d AND term='%s'",
+			intval($r[0]['id']),
+			dbesc($term)
+		);
+		if(count($x) && !$x[0]['blocktags'] && $t[0]['tcount']==0){
+			q("INSERT INTO term (oid, otype, type, term, url, uid) VALUE (%d, %d, %d, '%s', '%s', %d)",
+	                   intval($r[0]['id']),
+	                   $term_objtype,
+	                   TERM_HASHTAG,
+	                   dbesc($term),
+	                   dbesc($a->get_baseurl() . '/search?tag=' . $term),
+	                   intval($owner_uid)
+	                );
+		}
+
+		/*if(count($x) && !$x[0]['blocktags'] && (! stristr($r[0]['tag'], ']' . $term . '['))) {
+			q("update item set tag = '%s' where id = %d",
 				dbesc($r[0]['tag'] . (strlen($r[0]['tag']) ? ',' : '') . '#[url=' . $a->get_baseurl() . '/search?tag=' . $term . ']'. $term . '[/url]'),
 				intval($r[0]['id'])
 			);
-		}
+		}*/
 
 	}
-		
+
 
 	$arr['id'] = $post_id;
 

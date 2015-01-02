@@ -1,5 +1,7 @@
-Site speed can be improved when the following indexes are set. They cannot be set through the update script because on large sites they will block the site for several minutes.
+sample-Lighttpd.config
+sample-nginx.config
 
-CREATE INDEX `uid_commented` ON `item` (`uid`, `commented`);
-CREATE INDEX `uid_created` ON `item` (`uid`, `created`);
-CREATE INDEX `uid_unseen` ON `item` (`uid`, `unseen`);
+		Sample configuration files to use Friendica with Lighttpd
+	or Nginx. Pleas check software documentation to know how modify
+	these examples to make them work on your server.
+

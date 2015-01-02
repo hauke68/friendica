@@ -1,4 +1,5 @@
 Friendica Installation
+===============
 
 We've tried very hard to ensure that Friendica will run on commodity hosting platforms - such as those used to host Wordpress blogs and Drupal websites. But be aware that Friendica is more than a simple web application. It is a complex communications system which more closely resembles an email server than a web server. For reliability and performance, messages are delivered in the background and are queued for later delivery when sites are down. This kind of functionality requires a bit more of the host system than the typical blog. Not every PHP/MySQL hosting provider will be able to support Friendica. Many will. But **please** review the requirements and confirm these with your hosting provider prior to installation.
 
@@ -14,7 +15,7 @@ local .htaccess file
     - PHP  5.2+. The later the better. You'll need 5.3 for encryption of key exchange conversations. On a Windows environment, 5.2+ might not work as the function dns_get_record() is only available with version 5.3.
         - PHP *command line* access with register_argc_argv set to true in the
 php.ini file
-        - curl, gd, mysql, and openssl extensions
+        - curl, gd, mysql, hash and openssl extensions
         - some form of email server or email gateway such that PHP mail() works
         - mcrypt (optional; used for server-to-server message encryption)
 
@@ -41,6 +42,12 @@ you might have trouble getting everything to work.]
     - and then you can pick up the latest changes at any time with
 
         `git pull`
+        
+    - make sure folder *view/smarty3* exists and is writable by webserver
+        
+        `mkdir view/smarty3`
+        
+        `chmod 777 view/smarty3`
     
     - For installing addons
     

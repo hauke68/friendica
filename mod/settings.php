@@ -4,10 +4,10 @@
 function get_theme_config_file($theme){
 	$a = get_app();
 	$base_theme = $a->theme_info['extends'];
-	
+
 	if (file_exists("view/theme/$theme/config.php")){
 		return "view/theme/$theme/config.php";
-	} 
+	}
 	if (file_exists("view/theme/$base_theme/config.php")){
 		return "view/theme/$base_theme/config.php";
 	}
@@ -15,6 +15,12 @@ function get_theme_config_file($theme){
 }
 
 function settings_init(&$a) {
+
+	// APC deactivated, since there are problems with PHP 5.5
+	//if (function_exists("apc_delete")) {
+	//	$toDelete = new APCIterator('user', APC_ITER_VALUE);
+	//	apc_delete($toDelete);
+	//}
 
 	// These lines provide the javascript needed by the acl selector
 
@@ -27,25 +33,35 @@ function settings_init(&$a) {
 
 	$tabs = array(
 		array(
-			'label'	=> t('Account settings'),
+			'label'	=> t('Account'),
 			'url' 	=> $a->get_baseurl(true).'/settings',
-			'selected'	=> (($a->argc == 1)?'active':''),
-		),	
+			'selected'	=>  (($a->argc == 1) && ($a->argv[0] === 'settings')?'active':''),
+		),
 		array(
-			'label'	=> t('Display settings'),
+			'label'	=> t('Additional features'),
+			'url' 	=> $a->get_baseurl(true).'/settings/features',
+			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'features') ? 'active' : ''),
+		),
+		array(
+			'label'	=> t('Display'),
 			'url' 	=> $a->get_baseurl(true).'/settings/display',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'display')?'active':''),
-		),	
-		
+		),
+
 		array(
-			'label'	=> t('Connector settings'),
+			'label'	=> t('Social Networks'),
 			'url' 	=> $a->get_baseurl(true).'/settings/connectors',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'connectors')?'active':''),
 		),
 		array(
-			'label'	=> t('Plugin settings'),
+			'label'	=> t('Plugins'),
 			'url' 	=> $a->get_baseurl(true).'/settings/addon',
 			'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'addon')?'active':''),
+		),
+		array(
+			'label'	=> t('Delegations'),
+			'url' 	=> $a->get_baseurl(true).'/delegate',
+			'selected'	=> (($a->argc == 1) && ($a->argv[0] === 'delegate')?'active':''),
 		),
 		array(
 			'label' => t('Connected apps'),
@@ -55,15 +71,15 @@ function settings_init(&$a) {
 		array(
 			'label' => t('Export personal data'),
 			'url' => $a->get_baseurl(true) . '/uexport',
-			'selected' => ''
+			'selected' => (($a->argc == 1) && ($a->argv[0] === 'uexport')?'active':''),
 		),
 		array(
 			'label' => t('Remove account'),
 			'url' => $a->get_baseurl(true) . '/removeme',
-			'selected' => ''
+			'selected' => (($a->argc == 1) && ($a->argv[0] === 'removeme')?'active':''),
 		)
 	);
-	
+
 	$tabtpl = get_markup_template("generic_links_widget.tpl");
 	$a->page['aside'] = replace_macros($tabtpl, array(
 		'$title' => t('Settings'),
@@ -91,19 +107,19 @@ function settings_post(&$a) {
 
 	if(($a->argc > 1) && ($a->argv[1] === 'oauth') && x($_POST,'remove')){
 		check_form_security_token_redirectOnErr('/settings/oauth', 'settings_oauth');
-		
+
 		$key = $_POST['remove'];
 		q("DELETE FROM tokens WHERE id='%s' AND uid=%d",
 			dbesc($key),
 			local_user());
 		goaway($a->get_baseurl(true)."/settings/oauth/");
-		return;			
+		return;
 	}
 
 	if(($a->argc > 2) && ($a->argv[1] === 'oauth')  && ($a->argv[2] === 'edit'||($a->argv[2] === 'add')) && x($_POST,'submit')) {
-		
+
 		check_form_security_token_redirectOnErr('/settings/oauth', 'settings_oauth');
-		
+
 		$name   	= ((x($_POST,'name')) ? $_POST['name'] : '');
 		$key		= ((x($_POST,'key')) ? $_POST['key'] : '');
 		$secret		= ((x($_POST,'secret')) ? $_POST['secret'] : '');
@@ -111,7 +127,7 @@ function settings_post(&$a) {
 		$icon		= ((x($_POST,'icon')) ? $_POST['icon'] : '');
 		if ($name=="" || $key=="" || $secret==""){
 			notice(t("Missing some important data!"));
-			
+
 		} else {
 			if ($_POST['submit']==t("Update")){
 				$r = q("UPDATE clients SET
@@ -147,17 +163,17 @@ function settings_post(&$a) {
 
 	if(($a->argc > 1) && ($a->argv[1] == 'addon')) {
 		check_form_security_token_redirectOnErr('/settings/addon', 'settings_addon');
-		
+
 		call_hooks('plugin_settings_post', $_POST);
 		return;
 	}
 
 	if(($a->argc > 1) && ($a->argv[1] == 'connectors')) {
-		
+
 		check_form_security_token_redirectOnErr('/settings/connectors', 'settings_connectors');
-		
+
 		if(x($_POST, 'imap-submit')) {
-			
+
 			$mail_server       = ((x($_POST,'mail_server')) ? $_POST['mail_server'] : '');
 			$mail_port         = ((x($_POST,'mail_port')) ? $_POST['mail_port'] : '');
 			$mail_ssl          = ((x($_POST,'mail_ssl')) ? strtolower(trim($_POST['mail_ssl'])) : '');
@@ -186,14 +202,14 @@ function settings_post(&$a) {
 				if(strlen($mail_pass)) {
 					$pass = '';
 					openssl_public_encrypt($mail_pass,$pass,$a->user['pubkey']);
-					q("UPDATE `mailacct` SET `pass` = '%s' WHERE `uid` = %d LIMIT 1",
+					q("UPDATE `mailacct` SET `pass` = '%s' WHERE `uid` = %d",
 						dbesc(bin2hex($pass)),
 						intval(local_user())
 					);
 				}
 				$r = q("UPDATE `mailacct` SET `server` = '%s', `port` = %d, `ssltype` = '%s', `user` = '%s',
 					`action` = %d, `movetofolder` = '%s',
-					`mailbox` = 'INBOX', `reply_to` = '%s', `pubmail` = %d WHERE `uid` = %d LIMIT 1",
+					`mailbox` = 'INBOX', `reply_to` = '%s', `pubmail` = %d WHERE `uid` = %d",
 					dbesc($mail_server),
 					intval($mail_port),
 					dbesc($mail_ssl),
@@ -204,6 +220,7 @@ function settings_post(&$a) {
 					intval($mail_pubmail),
 					intval(local_user())
 				);
+				logger("mail: updating mailaccount. Response: ".print_r($r, true));
 				$r = q("SELECT * FROM `mailacct` WHERE `uid` = %d LIMIT 1",
 					intval(local_user())
 				);
@@ -230,14 +247,28 @@ function settings_post(&$a) {
 		call_hooks('connector_settings_post', $_POST);
 		return;
 	}
-	
-	if(($a->argc > 1) && ($a->argv[1] == 'display')) {
-		
+
+	if(($a->argc > 1) && ($a->argv[1] === 'features')) {
+		check_form_security_token_redirectOnErr('/settings/features', 'settings_features');
+		foreach($_POST as $k => $v) {
+			if(strpos($k,'feature_') === 0) {
+				set_pconfig(local_user(),'feature',substr($k,8),((intval($v)) ? 1 : 0));
+			}
+		}
+		info( t('Features updated') . EOL);
+		return;
+	}
+
+	if(($a->argc > 1) && ($a->argv[1] === 'display')) {
+
 		check_form_security_token_redirectOnErr('/settings/display', 'settings_display');
 
 		$theme = ((x($_POST,'theme')) ? notags(trim($_POST['theme']))  : $a->user['theme']);
 		$mobile_theme = ((x($_POST,'mobile_theme')) ? notags(trim($_POST['mobile_theme']))  : '');
-		$nosmile = ((x($_POST,'nosmile')) ? intval($_POST['nosmile'])  : 0);  
+		$nosmile = ((x($_POST,'nosmile')) ? intval($_POST['nosmile'])  : 0);
+		$noinfo = ((x($_POST,'noinfo')) ? intval($_POST['noinfo'])  : 0);
+		$infinite_scroll = ((x($_POST,'infinite_scroll')) ? intval($_POST['infinite_scroll'])  : 0);
+		$no_auto_update = ((x($_POST,'no_auto_update')) ? intval($_POST['no_auto_update'])  : 0);
 		$browser_update   = ((x($_POST,'browser_update')) ? intval($_POST['browser_update']) : 0);
 		$browser_update   = $browser_update * 1000;
 		if($browser_update < 10000)
@@ -246,6 +277,9 @@ function settings_post(&$a) {
 		$itemspage_network   = ((x($_POST,'itemspage_network')) ? intval($_POST['itemspage_network']) : 40);
 		if($itemspage_network > 100)
 			$itemspage_network = 100;
+		$itemspage_mobile_network   = ((x($_POST,'itemspage_mobile_network')) ? intval($_POST['itemspage_mobile_network']) : 20);
+		if($itemspage_mobile_network > 100)
+			$itemspage_mobile_network = 100;
 
 
 		if($mobile_theme !== '') {
@@ -254,7 +288,11 @@ function settings_post(&$a) {
 
 		set_pconfig(local_user(),'system','update_interval', $browser_update);
 		set_pconfig(local_user(),'system','itemspage_network', $itemspage_network);
+		set_pconfig(local_user(),'system','itemspage_mobile_network', $itemspage_mobile_network);
 		set_pconfig(local_user(),'system','no_smilies',$nosmile);
+		set_pconfig(local_user(),'system','ignore_info',$noinfo);
+		set_pconfig(local_user(),'system','infinite_scroll',$infinite_scroll);
+		set_pconfig(local_user(),'system','no_auto_update',$no_auto_update);
 
 
 		if ($theme == $a->user['theme']){
@@ -266,24 +304,31 @@ function settings_post(&$a) {
 		}
 
 
-		$r = q("UPDATE `user` SET `theme` = '%s' WHERE `uid` = %d LIMIT 1",
+		$r = q("UPDATE `user` SET `theme` = '%s' WHERE `uid` = %d",
 				dbesc($theme),
 				intval(local_user())
 		);
-	
+
 		call_hooks('display_settings_post', $_POST);
 		goaway($a->get_baseurl(true) . '/settings/display' );
 		return; // NOTREACHED
 	}
 
 	check_form_security_token_redirectOnErr('/settings', 'settings');
-	
+
+	if (x($_POST,'resend_relocate')) {
+		proc_run('php', 'include/notifier.php', 'relocate', local_user());
+		info(t("Relocate message has been send to your contacts"));
+		goaway($a->get_baseurl(true) . '/settings');
+	}
+
 	call_hooks('settings_post', $_POST);
 
-	if((x($_POST,'npassword')) || (x($_POST,'confirm'))) {
+	if((x($_POST,'password')) || (x($_POST,'confirm'))) {
 
-		$newpass = $_POST['npassword'];
+		$newpass = $_POST['password'];
 		$confirm = $_POST['confirm'];
+		$oldpass = hash('whirlpool', $_POST['opassword']);
 
 		$err = false;
 		if($newpass != $confirm ) {
@@ -294,11 +339,19 @@ function settings_post(&$a) {
 		if((! x($newpass)) || (! x($confirm))) {
 			notice( t('Empty passwords are not allowed. Password unchanged.') . EOL);
 			$err = true;
-		}
+        }
+
+        //  check if the old password was supplied correctly before
+        //  changing it to the new value
+        $r = q("SELECT `password` FROM `user`WHERE `uid` = %d LIMIT 1", intval(local_user()));
+        if( $oldpass != $r[0]['password'] ) {
+            notice( t('Wrong password.') . EOL);
+            $err = true;
+        }
 
 		if(! $err) {
 			$password = hash('whirlpool',$newpass);
-			$r = q("UPDATE `user` SET `password` = '%s' WHERE `uid` = %d LIMIT 1",
+			$r = q("UPDATE `user` SET `password` = '%s' WHERE `uid` = %d",
 				dbesc($password),
 				intval(local_user())
 			);
@@ -309,7 +362,7 @@ function settings_post(&$a) {
 		}
 	}
 
-	
+
 	$username         = ((x($_POST,'username'))   ? notags(trim($_POST['username']))     : '');
 	$email            = ((x($_POST,'email'))      ? notags(trim($_POST['email']))        : '');
 	$timezone         = ((x($_POST,'timezone'))   ? notags(trim($_POST['timezone']))     : '');
@@ -335,7 +388,7 @@ function settings_post(&$a) {
 	$blocktags        = (((x($_POST,'blocktags')) && (intval($_POST['blocktags']) == 1)) ? 0: 1); // this setting is inverted!
 	$unkmail          = (((x($_POST,'unkmail')) && (intval($_POST['unkmail']) == 1)) ? 1: 0);
 	$cntunkmail       = ((x($_POST,'cntunkmail')) ? intval($_POST['cntunkmail']) : 0);
-	$suggestme        = ((x($_POST,'suggestme')) ? intval($_POST['suggestme'])  : 0);  
+	$suggestme        = ((x($_POST,'suggestme')) ? intval($_POST['suggestme'])  : 0);
 	$hide_friends     = (($_POST['hide-friends'] == 1) ? 1: 0);
 	$hidewall         = (($_POST['hidewall'] == 1) ? 1: 0);
 	$post_newfriend   = (($_POST['post_newfriend'] == 1) ? 1: 0);
@@ -377,11 +430,24 @@ function settings_post(&$a) {
 
 	if($email != $a->user['email']) {
 		$email_changed = true;
-        if(! valid_email($email))
-			$err .= t(' Not valid email.');
-		if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0)) {
-			$err .= t(' Cannot change to that email.');
+		//  check for the correct password
+		$r = q("SELECT `password` FROM `user`WHERE `uid` = %d LIMIT 1", intval(local_user()));
+		$password = hash('whirlpool', $_POST['mpassword']);
+		if ($password != $r[0]['password']) {
+			$err .= t('Wrong Password') . EOL;
 			$email = $a->user['email'];
+		}
+		//  check the email is valid
+		if(! valid_email($email))
+			$err .= t(' Not valid email.');
+		//  ensure new email is not the admin mail
+		//if((x($a->config,'admin_email')) && (strcasecmp($email,$a->config['admin_email']) == 0)) {
+		if(x($a->config,'admin_email')) {
+			$adminlist = explode(",", str_replace(" ", "", strtolower($a->config['admin_email'])));
+			if (in_array(strtolower($email), $adminlist)) {
+				$err .= t(' Cannot change to that email.');
+				$email = $a->user['email'];
+			}
 		}
 	}
 
@@ -443,7 +509,7 @@ function settings_post(&$a) {
 		}
 	}
 
-	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s', `openid` = '%s', `timezone` = '%s',  `allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s', `notify-flags` = %d, `page-flags` = %d, `default-location` = '%s', `allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s', `def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d, `unkmail` = %d, `cntunkmail` = %d  WHERE `uid` = %d LIMIT 1",
+	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s', `openid` = '%s', `timezone` = '%s',  `allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s', `notify-flags` = %d, `page-flags` = %d, `default-location` = '%s', `allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s', `def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d, `unkmail` = %d, `cntunkmail` = %d  WHERE `uid` = %d",
 			dbesc($username),
 			dbesc($email),
 			dbesc($openid),
@@ -470,12 +536,14 @@ function settings_post(&$a) {
 	if($r)
 		info( t('Settings updated.') . EOL);
 
-	$r = q("UPDATE `profile` 
-		SET `publish` = %d, 
+	$r = q("UPDATE `profile`
+		SET `publish` = %d,
+		`name` = '%s',
 		`net-publish` = %d,
 		`hide-friends` = %d
-		WHERE `is-default` = 1 AND `uid` = %d LIMIT 1",
+		WHERE `is-default` = 1 AND `uid` = %d",
 		intval($publish),
+		dbesc($username),
 		intval($net_publish),
 		intval($hide_friends),
 		intval(local_user())
@@ -483,12 +551,12 @@ function settings_post(&$a) {
 
 
 	if($name_change) {
-		q("UPDATE `contact` SET `name` = '%s', `name-date` = '%s' WHERE `uid` = %d AND `self` = 1 LIMIT 1",
+		q("UPDATE `contact` SET `name` = '%s', `name-date` = '%s' WHERE `uid` = %d AND `self` = 1",
 			dbesc($username),
 			dbesc(datetime_convert()),
 			intval(local_user())
 		);
-	}		
+	}
 
 	if(($old_visibility != $net_publish) || ($page_flags != $old_page_flags)) {
 		// Update global directory in background
@@ -513,7 +581,7 @@ function settings_post(&$a) {
 	goaway($a->get_baseurl(true) . '/settings' );
 	return; // NOTREACHED
 }
-		
+
 
 if(! function_exists('settings_content')) {
 function settings_content(&$a) {
@@ -530,17 +598,17 @@ function settings_content(&$a) {
 		notice( t('Permission denied.') . EOL );
 		return;
 	}
-	
 
-		
+
+
 	if(($a->argc > 1) && ($a->argv[1] === 'oauth')) {
-		
+
 		if(($a->argc > 2) && ($a->argv[2] === 'add')) {
 			$tpl = get_markup_template("settings_oauth_edit.tpl");
 			$o .= replace_macros($tpl, array(
 				'$form_security_token' => get_form_security_token("settings_oauth"),
 				'$title'	=> t('Add application'),
-				'$submit'	=> t('Submit'),
+				'$submit'	=> t('Save Settings'),
 				'$cancel'	=> t('Cancel'),
 				'$name'		=> array('name', t('Name'), '', ''),
 				'$key'		=> array('key', t('Consumer Key'), '', ''),
@@ -550,18 +618,18 @@ function settings_content(&$a) {
 			));
 			return $o;
 		}
-		
+
 		if(($a->argc > 3) && ($a->argv[2] === 'edit')) {
 			$r = q("SELECT * FROM clients WHERE client_id='%s' AND uid=%d",
 					dbesc($a->argv[3]),
 					local_user());
-			
+
 			if (!count($r)){
 				notice(t("You can't edit this application."));
 				return;
 			}
 			$app = $r[0];
-			
+
 			$tpl = get_markup_template("settings_oauth_edit.tpl");
 			$o .= replace_macros($tpl, array(
 				'$form_security_token' => get_form_security_token("settings_oauth"),
@@ -576,26 +644,26 @@ function settings_content(&$a) {
 			));
 			return $o;
 		}
-		
+
 		if(($a->argc > 3) && ($a->argv[2] === 'delete')) {
 			check_form_security_token_redirectOnErr('/settings/oauth', 'settings_oauth', 't');
-		
+
 			$r = q("DELETE FROM clients WHERE client_id='%s' AND uid=%d",
 					dbesc($a->argv[3]),
 					local_user());
 			goaway($a->get_baseurl(true)."/settings/oauth/");
-			return;			
+			return;
 		}
-		
-		
+
+
 		$r = q("SELECT clients.*, tokens.id as oauth_token, (clients.uid=%d) AS my 
 				FROM clients
 				LEFT JOIN tokens ON clients.client_id=tokens.client_id
 				WHERE clients.uid IN (%d,0)",
 				local_user(),
 				local_user());
-		
-		
+
+
 		$tpl = get_markup_template("settings_oauth.tpl");
 		$o .= replace_macros($tpl, array(
 			'$form_security_token' => get_form_security_token("settings_oauth"),
@@ -610,18 +678,19 @@ function settings_content(&$a) {
 			'$apps'		=> $r,
 		));
 		return $o;
-		
+
 	}
+
 	if(($a->argc > 1) && ($a->argv[1] === 'addon')) {
 		$settings_addons = "";
-		
+
 		$r = q("SELECT * FROM `hook` WHERE `hook` = 'plugin_settings' ");
 		if(! count($r))
 			$settings_addons = t('No Plugin settings configured');
 
 		call_hooks('plugin_settings', $settings_addons);
-		
-		
+
+
 		$tpl = get_markup_template("settings_addons.tpl");
 		$o .= replace_macros($tpl, array(
 			'$form_security_token' => get_form_security_token("settings_addon"),
@@ -631,14 +700,42 @@ function settings_content(&$a) {
 		return $o;
 	}
 
+	if(($a->argc > 1) && ($a->argv[1] === 'features')) {
+
+		$arr = array();
+		$features = get_features();
+		foreach($features as $fname => $fdata) {
+			$arr[$fname] = array();
+			$arr[$fname][0] = $fdata[0];
+			foreach(array_slice($fdata,1) as $f) {
+				$arr[$fname][1][] = array('feature_' .$f[0],$f[1],((intval(get_pconfig(local_user(),'feature',$f[0]))) ? "1" : ''),$f[2],array(t('Off'),t('On')));
+			}
+		}
+
+
+		$tpl = get_markup_template("settings_features.tpl");
+		$o .= replace_macros($tpl, array(
+			'$form_security_token' => get_form_security_token("settings_features"),
+			'$title'	=> t('Additional Features'),
+			'$features' => $arr,
+			'$submit'   => t('Save Settings'),
+		));
+		return $o;
+	}
+
 	if(($a->argc > 1) && ($a->argv[1] === 'connectors')) {
 
 		$settings_connectors = "";
-		
+
 		call_hooks('connector_settings', $settings_connectors);
 
-		$diasp_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('Diaspora'), ((get_config('system','diaspora_enabled')) ? t('enabled') : t('disabled')));
-		$ostat_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('StatusNet'), ((get_config('system','ostatus_disabled')) ? t('disabled') : t('enabled')));
+		if (is_site_admin()) {
+			$diasp_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('Diaspora'), ((get_config('system','diaspora_enabled')) ? t('enabled') : t('disabled')));
+			$ostat_enabled = sprintf( t('Built-in support for %s connectivity is %s'), t('StatusNet'), ((get_config('system','ostatus_disabled')) ? t('disabled') : t('enabled')));
+		} else {
+			$diasp_enabled = "";
+			$ostat_enabled = "";
+		}
 
 		$mail_disabled = ((function_exists('imap_open') && (! get_config('system','imap_disabled'))) ? 0 : 1);
 		if(get_config('system','dfrn_only'))
@@ -672,11 +769,12 @@ function settings_content(&$a) {
 		else {
 			$mail_disabled_message = (($mail_disabled) ? t('Email access is disabled on this site.') : '');
 		}
-	
+
+
 		$o .= replace_macros($tpl, array(
 			'$form_security_token' => get_form_security_token("settings_connectors"),
-			
-			'$title'	=> t('Connector Settings'),
+
+			'$title'	=> t('Social Networks'),
 
 			'$diasp_enabled' => $diasp_enabled,
 			'$ostat_enabled' => $ostat_enabled,
@@ -690,11 +788,11 @@ function settings_content(&$a) {
 			'$mail_ssl'		=> array('mail_ssl', 	 t('Security:'), strtoupper($mail_ssl), '', array( 'notls'=>t('None'), 'TLS'=>'TLS', 'SSL'=>'SSL')),
 			'$mail_user'	=> array('mail_user',    t('Email login name:'), $mail_user, ''),
 			'$mail_pass'	=> array('mail_pass', 	 t('Email password:'), '', ''),
-			'$mail_replyto'	=> array('mail_replyto', t('Reply-to address:'), '', 'Optional'),
+			'$mail_replyto'	=> array('mail_replyto', t('Reply-to address:'), $mail_replyto, 'Optional'),
 			'$mail_pubmail'	=> array('mail_pubmail', t('Send public posts to all email contacts:'), $mail_pubmail, ''),
 			'$mail_action'	=> array('mail_action',	 t('Action after import:'), $mail_action, '', array(0=>t('None'), /*1=>t('Delete'),*/ 2=>t('Mark as seen'), 3=>t('Move to folder'))),
 			'$mail_movetofolder'	=> array('mail_movetofolder',	 t('Move to folder:'), $mail_movetofolder, ''),
-			'$submit' => t('Submit'),
+			'$submit' => t('Save Settings'),
 
 			'$settings_connectors' => $settings_connectors
 		));
@@ -718,14 +816,14 @@ function settings_content(&$a) {
 		$allowed_themes_raw = explode(',',$allowed_themes_str);
 		$allowed_themes = array();
 		if(count($allowed_themes_raw))
-			foreach($allowed_themes_raw as $x) 
+			foreach($allowed_themes_raw as $x)
 				if(strlen(trim($x)) && is_dir("view/theme/$x"))
 					$allowed_themes[] = trim($x);
 
-		
+
 		$themes = array();
 		$mobile_themes = array("---" => t('No special theme for mobile devices'));
-		$files = glob('view/theme/*');
+		$files = glob('view/theme/*'); /* */
 		if($allowed_themes) {
 			foreach($allowed_themes as $th) {
 				$f = $th;
@@ -745,40 +843,54 @@ function settings_content(&$a) {
 		}
 		$theme_selected = (!x($_SESSION,'theme')? $default_theme : $_SESSION['theme']);
 		$mobile_theme_selected = (!x($_SESSION,'mobile-theme')? $default_mobile_theme : $_SESSION['mobile-theme']);
-		
+
 		$browser_update = intval(get_pconfig(local_user(), 'system','update_interval'));
 		$browser_update = (($browser_update == 0) ? 40 : $browser_update / 1000); // default if not set: 40 seconds
 
 		$itemspage_network = intval(get_pconfig(local_user(), 'system','itemspage_network'));
 		$itemspage_network = (($itemspage_network > 0 && $itemspage_network < 101) ? $itemspage_network : 40); // default if not set: 40 items
-		
+		$itemspage_mobile_network = intval(get_pconfig(local_user(), 'system','itemspage_mobile_network'));
+		$itemspage_mobile_network = (($itemspage_mobile_network > 0 && $itemspage_mobile_network < 101) ? $itemspage_mobile_network : 20); // default if not set: 20 items
+
 		$nosmile = get_pconfig(local_user(),'system','no_smilies');
 		$nosmile = (($nosmile===false)? '0': $nosmile); // default if not set: 0
 
+		$noinfo = get_pconfig(local_user(),'system','ignore_info');
+		$noinfo = (($noinfo===false)? '0': $noinfo); // default if not set: 0
+
+		$infinite_scroll = get_pconfig(local_user(),'system','infinite_scroll');
+		$infinite_scroll = (($infinite_scroll===false)? '0': $infinite_scroll); // default if not set: 0
+
+		$no_auto_update = get_pconfig(local_user(),'system','no_auto_update');
+		$no_auto_update = (($no_auto_update===false)? '0': $no_auto_update); // default if not set: 0
 
 		$theme_config = "";
 		if( ($themeconfigfile = get_theme_config_file($theme_selected)) != null){
 			require_once($themeconfigfile);
 			$theme_config = theme_content($a);
 		}
-		
+
 		$tpl = get_markup_template("settings_display.tpl");
 		$o = replace_macros($tpl, array(
 			'$ptitle' 	=> t('Display Settings'),
 			'$form_security_token' => get_form_security_token("settings_display"),
-			'$submit' 	=> t('Submit'),
+			'$submit' 	=> t('Save Settings'),
 			'$baseurl' => $a->get_baseurl(true),
 			'$uid' => local_user(),
-		
+
 			'$theme'	=> array('theme', t('Display Theme:'), $theme_selected, '', $themes, true),
 			'$mobile_theme'	=> array('mobile_theme', t('Mobile Theme:'), $mobile_theme_selected, '', $mobile_themes, false),
 			'$ajaxint'   => array('browser_update',  t("Update browser every xx seconds"), $browser_update, t('Minimum of 10 seconds, no maximum')),
 			'$itemspage_network'   => array('itemspage_network',  t("Number of items to display per page:"), $itemspage_network, t('Maximum of 100 items')),
+			'$itemspage_mobile_network'   => array('itemspage_mobile_network',  t("Number of items to display per page when viewed from mobile device:"), $itemspage_mobile_network, t('Maximum of 100 items')),
 			'$nosmile'	=> array('nosmile', t("Don't show emoticons"), $nosmile, ''),
-			
+			'$noinfo'	=> array('noinfo', t("Don't show notices"), $noinfo, ''),
+			'$infinite_scroll'	=> array('infinite_scroll', t("Infinite scroll"), $infinite_scroll, ''),
+			'$no_auto_update'	=> array('no_auto_update', t("Automatic updates only at the top of the network page"), $no_auto_update, 'When disabled, the network page is updated all the time, which could be confusing while reading.'),
+
 			'$theme_config' => $theme_config,
 		));
-		
+
 		$tpl = get_markup_template("settings_display_end.tpl");
 		$a->page['end'] .= replace_macros($tpl, array(
 			'$theme'	=> array('theme', t('Display Theme:'), $theme_selected, '', $themes)
@@ -786,8 +898,8 @@ function settings_content(&$a) {
 
 		return $o;
 	}
-	
-	
+
+
 	/*
 	 * ACCOUNT SETTINGS
 	 */
@@ -816,13 +928,13 @@ function settings_content(&$a) {
 
 	$expire_items = get_pconfig(local_user(), 'expire','items');
 	$expire_items = (($expire_items===false)? '1' : $expire_items); // default if not set: 1
-	
+
 	$expire_notes = get_pconfig(local_user(), 'expire','notes');
 	$expire_notes = (($expire_notes===false)? '1' : $expire_notes); // default if not set: 1
 
 	$expire_starred = get_pconfig(local_user(), 'expire','starred');
 	$expire_starred = (($expire_starred===false)? '1' : $expire_starred); // default if not set: 1
-	
+
 	$expire_photos = get_pconfig(local_user(), 'expire','photos');
 	$expire_photos = (($expire_photos===false)? '0' : $expire_photos); // default if not set: 0
 
@@ -842,32 +954,35 @@ function settings_content(&$a) {
 	$post_profilechange = get_pconfig(local_user(), 'system','post_profilechange');
 	$post_profilechange = (($post_profilechange===false)? '0': $post_profilechange); // default if not set: 0
 
-	
+	// nowarn_insecure
+
 	if(! strlen($a->user['timezone']))
 		$timezone = date_default_timezone_get();
 
 
 
 	$pageset_tpl = get_markup_template('pagetypes.tpl');
-	$pagetype = replace_macros($pageset_tpl,array(
-		'$page_normal' 	=> array('page-flags', t('Normal Account Page'), PAGE_NORMAL, 
-									t('This account is a normal personal profile'), 
+	$pagetype = replace_macros($pageset_tpl, array(
+		'$user' 	=> t("User Types"),
+		'$community' 	=> t("Community Types"),
+		'$page_normal' 	=> array('page-flags', t('Normal Account Page'), PAGE_NORMAL,
+									t('This account is a normal personal profile'),
 									($a->user['page-flags'] == PAGE_NORMAL)),
-								
-		'$page_soapbox' 	=> array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX, 
-									t('Automatically approve all connection/friend requests as read-only fans'), 
+
+		'$page_soapbox' 	=> array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX,
+									t('Automatically approve all connection/friend requests as read-only fans'),
 									($a->user['page-flags'] == PAGE_SOAPBOX)),
-									
-		'$page_community'	=> array('page-flags', t('Community Forum/Celebrity Account'), PAGE_COMMUNITY, 
-									t('Automatically approve all connection/friend requests as read-write fans'), 
+
+		'$page_community'	=> array('page-flags', t('Community Forum/Celebrity Account'), PAGE_COMMUNITY,
+									t('Automatically approve all connection/friend requests as read-write fans'),
 									($a->user['page-flags'] == PAGE_COMMUNITY)),
-									
-		'$page_freelove' 	=> array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE, 
-									t('Automatically approve all connection/friend requests as friends'), 
+
+		'$page_freelove' 	=> array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE,
+									t('Automatically approve all connection/friend requests as friends'),
 									($a->user['page-flags'] == PAGE_FREELOVE)),
 
-		'$page_prvgroup' 	=> array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP, 
-									t('Private forum - approved members only'), 
+		'$page_prvgroup' 	=> array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP,
+									t('Private forum - approved members only'),
 									($a->user['page-flags'] == PAGE_PRVGROUP)),
 
 
@@ -915,7 +1030,7 @@ function settings_content(&$a) {
 			'$field' 	=> array('blockwall',  t('Allow friends to post to your profile page?'), (intval($a->user['blockwall']) ? '0' : '1'), '', array(t('No'),t('Yes'))),
 
 	));
- 
+
 
 	$blocktags = replace_macros($opt_tpl,array(
 			'$field' 	=> array('blocktags',  t('Allow friends to tag your posts?'), (intval($a->user['blocktags']) ? '0' : '1'), '', array(t('No'),t('Yes'))),
@@ -970,28 +1085,49 @@ function settings_content(&$a) {
 	require_once('include/group.php');
 	$group_select = mini_group_select(local_user(),$a->user['def_gid']);
 
-	$o .= replace_macros($stpl,array(
+
+	// Private/public post links for the non-JS ACL form
+	$private_post = 1;
+	if($_REQUEST['public'])
+		$private_post = 0;
+
+	$query_str = $a->query_string;
+	if(strpos($query_str, 'public=1') !== false)
+		$query_str = str_replace(array('?public=1', '&public=1'), array('', ''), $query_str);
+
+	// I think $a->query_string may never have ? in it, but I could be wrong
+	// It looks like it's from the index.php?q=[etc] rewrite that the web
+	// server does, which converts any ? to &, e.g. suggest&ignore=61 for suggest?ignore=61
+	if(strpos($query_str, '?') === false)
+		$public_post_link = '?public=1';
+	else
+		$public_post_link = '&public=1';
+
+
+	$o .= replace_macros($stpl, array(
 		'$ptitle' 	=> t('Account Settings'),
 
-		'$submit' 	=> t('Submit'),
+		'$submit' 	=> t('Save Settings'),
 		'$baseurl' => $a->get_baseurl(true),
 		'$uid' => local_user(),
 		'$form_security_token' => get_form_security_token("settings"),
 		'$nickname_block' => $prof_addr,
-		
+
 		'$h_pass' 	=> t('Password Settings'),
-		'$password1'=> array('npassword', t('New Password:'), '', ''),
+		'$password1'=> array('password', t('New Password:'), '', ''),
 		'$password2'=> array('confirm', t('Confirm:'), '', t('Leave password fields blank unless changing')),
+		'$password3'=> array('opassword', t('Current Password:'), '', t('Your current password to confirm the changes')),
+		'$password4'=> array('mpassword', t('Password:'), '', t('Your current password to confirm the changes')),
 		'$oid_enable' => (! get_config('system','no_openid')),
 		'$openid'	=> $openid_field,
-		
+
 		'$h_basic' 	=> t('Basic Settings'),
 		'$username' => array('username',  t('Full Name:'), $username,''),
 		'$email' 	=> array('email', t('Email Address:'), $email, ''),
 		'$timezone' => array('timezone_select' , t('Your Timezone:'), select_timezone($timezone), ''),
 		'$defloc'	=> array('defloc', t('Default Post Location:'), $defloc, ''),
 		'$allowloc' => array('allow_location', t('Use Browser Location:'), ($a->user['allow_location'] == 1), ''),
-		
+
 
 		'$h_prv' 	=> t('Security and Privacy Settings'),
 
@@ -1004,6 +1140,17 @@ function settings_content(&$a) {
 		'$blockwall'=> $blockwall, // array('blockwall', t('Allow friends to post to your profile page:'), !$blockwall, ''),
 		'$blocktags'=> $blocktags, // array('blocktags', t('Allow friends to tag your posts:'), !$blocktags, ''),
 
+		// ACL permissions box
+		'$acl_data' => construct_acl_data($a, $a->user), // For non-Javascript ACL selector
+		'$group_perms' => t('Show to Groups'),
+		'$contact_perms' => t('Show to Contacts'),
+		'$private' => t('Default Private Post'),
+		'$public' => t('Default Public Post'),
+		'$is_private' => $private_post,
+		'$return_path' => $query_str,
+		'$public_link' => $public_post_link,
+		'$settings_perms' => t('Default Permissions for New Posts'),
+
 		'$group_select' => $group_select,
 
 
@@ -1013,10 +1160,10 @@ function settings_content(&$a) {
 		'$profile_in_net_dir' => $profile_in_net_dir,
 		'$hide_friends' => $hide_friends,
 		'$hide_wall' => $hide_wall,
-		'$unkmail' => $unkmail,		
+		'$unkmail' => $unkmail,
 		'$cntunkmail' 	=> array('cntunkmail', t('Maximum private messages per day from unknown people:'), $cntunkmail ,t("\x28to prevent spam abuse\x29")),
-		
-		
+
+
 		'$h_not' 	=> t('Notification Settings'),
 		'$activity_options' => t('By default post a status message when:'),
 		'$post_newfriend' => array('post_newfriend',  t('accepting a friend request'), $post_newfriend, ''),
@@ -1031,12 +1178,16 @@ function settings_content(&$a) {
 		'$notify6'  => array('notify6', t('You receive a friend suggestion'), ($notify & NOTIFY_SUGGEST), NOTIFY_SUGGEST, ''),		
 		'$notify7'  => array('notify7', t('You are tagged in a post'), ($notify & NOTIFY_TAGSELF), NOTIFY_TAGSELF, ''),		
 		'$notify8'  => array('notify8', t('You are poked/prodded/etc. in a post'), ($notify & NOTIFY_POKE), NOTIFY_POKE, ''),		
-		
-		
+
+
 		'$h_advn' => t('Advanced Account/Page Type Settings'),
 		'$h_descadvn' => t('Change the behaviour of this account for special situations'),
 		'$pagetype' => $pagetype,
-		
+
+		'$relocate' => t('Relocate'),
+		'$relocate_text' => t("If you have moved this profile from another server, and some of your contacts don't receive your updates, try pushing this button."),
+		'$relocate_button' => t("Resend relocate message to contacts"),
+
 	));
 
 	call_hooks('settings_form',$o);

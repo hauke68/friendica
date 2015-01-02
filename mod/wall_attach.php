@@ -65,6 +65,18 @@ function wall_attach_post(&$a) {
 
 	$maxfilesize = get_config('system','maxfilesize');
 
+	/* Found html code written in text field of form,
+	 * when trying to upload a file with filesize
+	 * greater than upload_max_filesize. Cause is unknown.
+	 * Then Filesize gets <= 0.
+	 */
+
+	if($filesize <=0) {
+		notice(t('Sorry, maybe your upload is bigger than the PHP configuration allows') . EOL .(t('Or - did you try to upload an empty file?')) . EOL);
+		@unlink($src);
+		killme();
+	}
+
 	if(($maxfilesize) && ($filesize > $maxfilesize)) {
 		notice( sprintf(t('File exceeds size limit of %d'), $maxfilesize) . EOL);
 		@unlink($src);
@@ -122,10 +134,7 @@ function wall_attach_post(&$a) {
 		killme();
 	}
 
-	$lf = '<br />';
-
-	if(local_user() && intval(get_pconfig(local_user(),'system','plaintext')))
-		$lf = "\n";
+	$lf = "\n";
 
 	echo  $lf . $lf . '[attachment]' . $r[0]['id'] . '[/attachment]' . $lf;
 	

@@ -1,5 +1,8 @@
 <?php
 
+require_once('include/enotify.php');
+require_once('include/user.php');
+
 function user_allow($hash) {
 
 	$a = get_app();
@@ -15,19 +18,19 @@ function user_allow($hash) {
 	$user = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
 		intval($register[0]['uid'])
 	);
-	
+
 	if(! count($user))
 		killme();
 
-	$r = q("DELETE FROM `register` WHERE `hash` = '%s' LIMIT 1",
+	$r = q("DELETE FROM `register` WHERE `hash` = '%s'",
 		dbesc($register[0]['hash'])
 	);
 
 
-	$r = q("UPDATE `user` SET `blocked` = 0, `verified` = 1 WHERE `uid` = %d LIMIT 1",
+	$r = q("UPDATE `user` SET `blocked` = 0, `verified` = 1 WHERE `uid` = %d",
 		intval($register[0]['uid'])
 	);
-	
+
 	$r = q("SELECT * FROM `profile` WHERE `uid` = %d AND `is-default` = 1",
 		intval($user[0]['uid'])
 	);
@@ -39,28 +42,19 @@ function user_allow($hash) {
 
 	push_lang($register[0]['language']);
 
-	$email_tpl = get_intltext_template("register_open_eml.tpl");
-	$email_tpl = replace_macros($email_tpl, array(
-			'$sitename' => $a->config['sitename'],
-			'$siteurl' =>  $a->get_baseurl(),
-			'$username' => $user[0]['username'],
-			'$email' => $user[0]['email'],
-			'$password' => $register[0]['password'],
-			'$uid' => $user[0]['uid']
-	));
-
-	$res = mail($user[0]['email'], sprintf(t('Registration details for %s'), $a->config['sitename']),
-		$email_tpl,
-			'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
-			. 'Content-type: text/plain; charset=UTF-8' . "\n"
-			. 'Content-transfer-encoding: 8bit' );
+	send_register_open_eml(
+		$user[0]['email'],
+		$a->config['sitename'],
+		$a->get_baseurl(),
+		$user[0]['username'],
+		$register[0]['password']);
 
 	pop_lang();
 
 	if($res) {
 		info( t('Account approved.') . EOL );
 		return true;
-	}	
+	}
 
 }
 
@@ -81,23 +75,23 @@ function user_deny($hash) {
 	$user = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
 		intval($register[0]['uid'])
 	);
-	
-	$r = q("DELETE FROM `user` WHERE `uid` = %d LIMIT 1",
+
+	$r = q("DELETE FROM `user` WHERE `uid` = %d",
 		intval($register[0]['uid'])
 	);
-	$r = q("DELETE FROM `contact` WHERE `uid` = %d LIMIT 1",
+	$r = q("DELETE FROM `contact` WHERE `uid` = %d",
 		intval($register[0]['uid'])
-	); 
-	$r = q("DELETE FROM `profile` WHERE `uid` = %d LIMIT 1",
+	);
+	$r = q("DELETE FROM `profile` WHERE `uid` = %d",
 		intval($register[0]['uid'])
-	); 
+	);
 
-	$r = q("DELETE FROM `register` WHERE `hash` = '%s' LIMIT 1",
+	$r = q("DELETE FROM `register` WHERE `hash` = '%s'",
 		dbesc($register[0]['hash'])
 	);
 	notice( sprintf(t('Registration revoked for %s'), $user[0]['username']) . EOL);
 	return true;
-	
+
 }
 
 function regmod_content(&$a) {
@@ -126,10 +120,14 @@ function regmod_content(&$a) {
 
 
 	if($cmd === 'deny') {
-		if (!user_deny($hash)) killme();
+		user_deny($hash);
+		goaway("/admin/users/");
+		killme();
 	}
 
 	if($cmd === 'allow') {
-		if (!user_allow($hash)) killme();
+		user_allow($hash);
+		goaway("/admin/users/");
+		killme();
 	}
 }

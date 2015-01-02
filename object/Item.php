@@ -32,7 +32,7 @@ class Item extends BaseObject {
 
 	public function __construct($data) {
 		$a = $this->get_app();
-		
+
 		$this->data = $data;
 		$this->set_template('wall');
 		$this->toplevel = ($this->get_id() == $this->get_data_value('parent'));
@@ -45,7 +45,7 @@ class Item extends BaseObject {
 				}
 			}
 		}
-		
+
 		$this->writable = ($this->get_data_value('writable') || $this->get_data_value('self'));
 
 		$ssl_state = ((local_user()) ? true : false);
@@ -66,6 +66,7 @@ class Item extends BaseObject {
 				if(! visible_activity($item)) {
 					continue;
 				}
+				$item['pagedrop'] = $data['pagedrop'];
 				$child = new Item($item);
 				$this->add_child($child);
 			}
@@ -80,17 +81,27 @@ class Item extends BaseObject {
 	 *      _ false on failure
 	 */
 	public function get_template_data($alike, $dlike, $thread_level=1) {
+		require_once("mod/proxy.php");
+
 		$result = array();
 
 		$a = $this->get_app();
 
 		$item = $this->get_data();
-
+                $edited = false;
+                if (strcmp($item['created'], $item['edited'])<>0) {
+                      $edited = array(
+                          'label' => t('This entry was edited'),
+                          'date' => datetime_convert('UTC', date_default_timezone_get(), $item['edited'], 'r'),
+                          'relative' => relative_date($item['edited'])
+                      );
+                }
 		$commentww = '';
 		$sparkle = '';
 		$buttons = '';
 		$dropping = false;
 		$star = false;
+		$ignore = false;
 		$isstarred = "unstarred";
 		$indent = '';
 		$shiny = '';
@@ -98,6 +109,7 @@ class Item extends BaseObject {
 		$total_children = $this->count_descendants();
 
 		$conv = $this->get_conversation();
+
 
 		$lock = ((($item['private'] == 1) || (($item['uid'] == local_user()) && (strlen($item['allow_cid']) || strlen($item['allow_gid']) 
 			|| strlen($item['deny_cid']) || strlen($item['deny_gid']))))
@@ -113,11 +125,11 @@ class Item extends BaseObject {
 
 		$drop = array(
 			'dropping' => $dropping,
-			'pagedrop' => $item['pagedrop'],
-			'select' => t('Select'), 
+			'pagedrop' => ((feature_enabled($conv->get_profile_owner(),'multi_delete')) ? $item['pagedrop'] : ''),
+			'select' => t('Select'),
 			'delete' => t('Delete'),
 		);
-		
+
 		$filer = (($conv->get_profile_owner() == local_user()) ? t("save to folder") : false);
 
 		$diff_author    = ((link_compare($item['url'],$item['author-link'])) ? false : true);
@@ -132,7 +144,7 @@ class Item extends BaseObject {
 		if($sp)
 			$sparkle = ' sparkle';
 		else
-			$profile_link = zrl($profile_link);                 
+			$profile_link = zrl($profile_link);
 
 		$normalised = normalise_link((strlen($item['author-link'])) ? $item['author-link'] : $item['url']);
 		if(($normalised != 'mailbox') && (x($a->contacts,$normalised)))
@@ -144,10 +156,13 @@ class Item extends BaseObject {
 		call_hooks('render_location',$locate);
 		$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_google($locate));
 
+		$searchpath = $a->get_baseurl()."/search?tag=";
 		$tags=array();
 		$hashtags = array();
 		$mentions = array();
-		foreach(explode(',',$item['tag']) as $tag){
+
+
+		/*foreach(explode(',',$item['tag']) as $tag){
 			$tag = trim($tag);
 			if ($tag!="") {
 				$t = bbcode($tag);
@@ -157,8 +172,7 @@ class Item extends BaseObject {
 				elseif($t[0] == '@')
 					$mentions[] = $t;
 			}
-
-		}        
+		}*/
 
 		$like    = ((x($alike,$item['uri'])) ? format_like($alike[$item['uri']],$alike[$item['uri'] . '-l'],'like',$item['uri']) : '');
 		$dislike = ((x($dlike,$item['uri'])) ? format_like($dlike[$item['uri']],$dlike[$item['uri'] . '-l'],'dislike',$item['uri']) : '');
@@ -169,10 +183,10 @@ class Item extends BaseObject {
 		 * Maybe we should establish a way to be notified about conversation changes
 		 */
 		$this->check_wall_to_wall();
-		
+
 		if($this->is_wall_to_wall() && ($this->get_owner_url() == $this->get_redirect_url()))
 			$osparkle = ' sparkle';
-		
+
 		if($this->is_toplevel()) {
 			if($conv->get_profile_owner() == local_user()) {
 				$isstarred = (($item['starred']) ? "starred" : "unstarred");
@@ -184,9 +198,29 @@ class Item extends BaseObject {
 					'classdo' => (($item['starred']) ? "hidden" : ""),
 					'classundo' => (($item['starred']) ? "" : "hidden"),
 					'starred' =>  t('starred'),
-					'tagger' => t("add tag"),
-					'classtagger' => "",
 				);
+				$r = q("SELECT `ignored` FROM `thread` WHERE `uid` = %d AND `iid` = %d LIMIT 1",
+					intval($item['uid']),
+					intval($item['id'])
+				);
+				if (count($r)) {
+					$ignore = array(
+						'do' => t("ignore thread"),
+						'undo' => t("unignore thread"),
+						'toggle' => t("toggle ignore status"),
+						'classdo' => (($r[0]['ignored']) ? "hidden" : ""),
+						'classundo' => (($r[0]['ignored']) ? "" : "hidden"),
+						'ignored' =>  t('ignored'),
+					);
+				}
+
+				$tagger = '';
+				if(feature_enabled($conv->get_profile_owner(),'commtag')) {
+					$tagger = array(
+						'add' => t("add tag"),
+						'class' => "",
+					);
+				}
 			}
 		} else {
 			$indent = 'comment';
@@ -195,7 +229,7 @@ class Item extends BaseObject {
 		if($conv->is_writable()) {
 			$buttons = array(
 				'like' => array( t("I like this \x28toggle\x29"), t("like")),
-				'dislike' => array( t("I don't like this \x28toggle\x29"), t("dislike")),
+				'dislike' => ((feature_enabled($conv->get_profile_owner(),'dislike')) ? array( t("I don't like this \x28toggle\x29"), t("dislike")) : ''),
 			);
 			if ($shareable) $buttons['share'] = array( t('Share this'), t('share'));
 		}
@@ -206,60 +240,133 @@ class Item extends BaseObject {
 
 		localize_item($item);
 
+		if ($item["postopts"] and !get_config("system", "suppress_language")) {
+			//$langdata = explode(";", $item["postopts"]);
+			//$langstr = substr($langdata[0], 5)." (".round($langdata[1]*100, 1)."%)";
+			$langstr = "";
+			if (substr($item["postopts"], 0, 5) == "lang=") {
+				$postopts = substr($item["postopts"], 5);
+
+				$languages = explode(":", $postopts);
+
+				if (sizeof($languages) == 1) {
+					$languages = array();
+					$languages[] = $postopts;
+				}
+
+				foreach ($languages as $language) {
+					$langdata = explode(";", $language);
+					if ($langstr != "")
+						$langstr .= ", ";
+
+					//$langstr .= $langdata[0]." (".round($langdata[1]*100, 1)."%)";
+					$langstr .= round($langdata[1]*100, 1)."% ".$langdata[0];
+				}
+			}
+		}
+
 		$body = prepare_body($item,true);
 
-        list($categories, $folders) = get_cats_and_terms($item);
+		list($categories, $folders) = get_cats_and_terms($item);
+
+		if($a->theme['template_engine'] === 'internal') {
+			$body_e = template_escape($body);
+			$text_e = strip_tags(template_escape($body));
+			$name_e = template_escape($profile_name);
+			$title_e = template_escape($item['title']);
+			$location_e = template_escape($location);
+			$owner_name_e = template_escape($this->get_owner_name());
+		}
+		else {
+			$body_e = $body;
+			$text_e = strip_tags($body);
+			$name_e = $profile_name;
+			$title_e = $item['title'];
+			$location_e = $location;
+			$owner_name_e = $this->get_owner_name();
+		}
+
+		// Disable features that aren't available in several networks
+		if (($item["item_network"] != "dfrn") AND isset($buttons["dislike"])) {
+			unset($buttons["dislike"]);
+			$tagger = '';
+		}
+
+		if (($item["item_network"] == "feed") AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		if (($item["item_network"] == "mail") AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		if (($item["item_network"] == "dspr") AND ($indent == 'comment') AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
+		// Facebook can like comments - but it isn't programmed in the connector yet.
+		if (($item["item_network"] == "face") AND ($indent == 'comment') AND isset($buttons["like"]))
+			unset($buttons["like"]);
+
 
 		$tmp_item = array(
 			'template' => $this->get_template(),
-			
+
 			'type' => implode("",array_slice(explode("/",$item['verb']),-1)),
-			'tags' => $tags,
-            'hashtags' => $hashtags,
-            'mentions' => $mentions,
+			'tags' => $item['tags'],
+			'hashtags' => $item['hashtags'],
+			'mentions' => $item['mentions'],
 			'txt_cats' => t('Categories:'),
 			'txt_folders' => t('Filed under:'),
 			'has_cats' => ((count($categories)) ? 'true' : ''),
 			'has_folders' => ((count($folders)) ? 'true' : ''),
-            'categories' => $categories,
-            'folders' => $folders,            
-			'body' => template_escape($body),
-			'text' => strip_tags(template_escape($body)),
+			'categories' => $categories,
+			'folders' => $folders,
+			'body' => $body_e,
+			'text' => $text_e,
 			'id' => $this->get_id(),
+			'guid' => $item['guid'],
 			'linktitle' => sprintf( t('View %s\'s profile @ %s'), $profile_name, ((strlen($item['author-link'])) ? $item['author-link'] : $item['url'])),
 			'olinktitle' => sprintf( t('View %s\'s profile @ %s'), $this->get_owner_name(), ((strlen($item['owner-link'])) ? $item['owner-link'] : $item['url'])),
 			'to' => t('to'),
+			'via' => t('via'),
 			'wall' => t('Wall-to-Wall'),
 			'vwall' => t('via Wall-To-Wall:'),
 			'profile_url' => $profile_link,
 			'item_photo_menu' => item_photo_menu($item),
-			'name' => template_escape($profile_name),
-			'thumb' => $profile_avatar,
+			'name' => $name_e,
+			'thumb' => proxy_url($profile_avatar),
 			'osparkle' => $osparkle,
 			'sparkle' => $sparkle,
-			'title' => template_escape($item['title']),
+			'title' => $title_e,
 			'localtime' => datetime_convert('UTC', date_default_timezone_get(), $item['created'], 'r'),
 			'ago' => (($item['app']) ? sprintf( t('%s from %s'),relative_date($item['created']),$item['app']) : relative_date($item['created'])),
+			'app' => $item['app'],
+			'created' => relative_date($item['created']),
 			'lock' => $lock,
-			'location' => template_escape($location),
+			'location' => $location_e,
 			'indent' => $indent,
 			'shiny' => $shiny,
 			'owner_url' => $this->get_owner_url(),
-			'owner_photo' => $this->get_owner_photo(),
-			'owner_name' => template_escape($this->get_owner_name()),
+			'owner_photo' => proxy_url($this->get_owner_photo()),
+			'owner_name' => $owner_name_e,
 			'plink' => get_plink($item),
-			'edpost' => $edpost,
+			'edpost'    => ((feature_enabled($conv->get_profile_owner(),'edit_posts')) ? $edpost : ''),
 			'isstarred' => $isstarred,
-			'star' => $star,
-			'filer' => $filer,
+			'star'      => ((feature_enabled($conv->get_profile_owner(),'star_posts')) ? $star : ''),
+			'ignore'      => ((feature_enabled($conv->get_profile_owner(),'ignore_posts')) ? $ignore : ''),
+			'tagger'	=> $tagger,
+			'filer'     => ((feature_enabled($conv->get_profile_owner(),'filing')) ? $filer : ''),
 			'drop' => $drop,
 			'vote' => $buttons,
 			'like' => $like,
-			'dislike' => $dislike,
+                        'dislike'   => $dislike,
+			'switchcomment' => t('Comment'),
 			'comment' => $this->get_comment_box($indent),
 			'previewing' => ($conv->is_preview() ? ' preview ' : ''),
 			'wait' => t('Please wait'),
-			'thread_level' => $thread_level
+			'thread_level' => $thread_level,
+                        'postopts' => $langstr,
+                        'edited' => $edited,
+			'network' => $item["item_network"],
+			'network_name' => network_to_name($item['item_network']),
 		);
 
 		$arr = array('item' => $item, 'output' => $tmp_item);
@@ -289,12 +396,12 @@ class Item extends BaseObject {
 				}
 			}
 		}
-		
+
         if ($this->is_toplevel()) {
             $result['total_comments_num'] = "$total_children";
             $result['total_comments_text'] = tt('comment', 'comments', $total_children);
         }
-        
+
 		$result['private'] = $item['private'];
 		$result['toplevel'] = ($this->is_toplevel() ? 'toplevel_item' : '');
 
@@ -309,7 +416,7 @@ class Item extends BaseObject {
 
 		return $result;
 	}
-	
+
 	public function get_id() {
 		return $this->get_data_value('id');
 	}
@@ -340,7 +447,7 @@ class Item extends BaseObject {
 		if(activity_match($item->get_data_value('verb'),ACTIVITY_LIKE) || activity_match($item->get_data_value('verb'),ACTIVITY_DISLIKE)) {
 			return false;
 		}
-		
+
 		$item->set_parent($this);
 		$this->children[] = $item;
 		return end($this->children);
@@ -447,7 +554,7 @@ class Item extends BaseObject {
 	 */
 	public function get_data_value($name) {
 		if(!isset($this->data[$name])) {
-			logger('[ERROR] Item::get_data_value : Item has no value name "'. $name .'".', LOGGER_DEBUG);
+//			logger('[ERROR] Item::get_data_value : Item has no value name "'. $name .'".', LOGGER_DEBUG);
 			return false;
 		}
 
@@ -458,10 +565,13 @@ class Item extends BaseObject {
 	 * Set template
 	 */
 	private function set_template($name) {
+		$a = get_app();
+
 		if(!x($this->available_templates, $name)) {
 			logger('[ERROR] Item::set_template : Template not available ("'. $name .'").', LOGGER_DEBUG);
 			return false;
 		}
+
 		$this->template = $this->available_templates[$name];
 	}
 
@@ -488,6 +598,12 @@ class Item extends BaseObject {
 		if($conv) {
 			// This will allow us to comment on wall-to-wall items owned by our friends
 			// and community forums even if somebody else wrote the post.
+
+			// bug #517 - this fixes for conversation owner
+			if($conv->get_mode() == 'profile' && $conv->get_profile_owner() == local_user())
+				return true; 
+
+			// this fixes for visitors
 			return ($this->writable || ($this->is_visiting() && $conv->get_mode() == 'profile'));
 		}
 		return $this->writable;
@@ -546,7 +662,7 @@ class Item extends BaseObject {
 				$qcomment = (($qc) ? explode("\n",$qc) : null);
 			}
 			$comment_box = replace_macros($template,array(
-				'$return_path' => '',
+				'$return_path' => $a->query_string,
 				'$threaded' => $this->is_threaded(),
 //				'$jsreload' => (($conv->get_mode() === 'display') ? $_SESSION['return_url'] : ''),
 				'$jsreload' => '',
@@ -568,7 +684,7 @@ class Item extends BaseObject {
 				'$edimg' => t('Image'),
 				'$edurl' => t('Link'),
 				'$edvideo' => t('Video'),
-				'$preview' => t('Preview'),
+				'$preview' => ((feature_enabled($conv->get_profile_owner(),'preview')) ? t('Preview') : ''),
 				'$indent' => $indent,
 				'$sourceapp' => t($a->sourcename),
 				'$ww' => (($conv->get_mode() === 'network') ? $ww : ''),
@@ -590,11 +706,10 @@ class Item extends BaseObject {
 		$a = $this->get_app();
 		$conv = $this->get_conversation();
 		$this->wall_to_wall = false;
-		
-		if($this->is_toplevel()) {
-			if( (! $this->get_data_value('self')) && ($conv->get_mode() !== 'profile')) {
-				if($this->get_data_value('wall')) {
 
+		if($this->is_toplevel()) {
+			if($conv->get_mode() !== 'profile') {
+				if($this->get_data_value('wall') AND !$this->get_data_value('self')) {
 					// On the network page, I am the owner. On the display page it will be the profile owner.
 					// This will have been stored in $a->page_contact by our calling page.
 					// Put this person as the wall owner of the wall-to-wall notice.
@@ -609,6 +724,7 @@ class Item extends BaseObject {
 					$owner_linkmatch = (($this->get_data_value('owner-link')) && link_compare($this->get_data_value('owner-link'),$this->get_data_value('author-link')));
 					$alias_linkmatch = (($this->get_data_value('alias')) && link_compare($this->get_data_value('alias'),$this->get_data_value('author-link')));
 					$owner_namematch = (($this->get_data_value('owner-name')) && $this->get_data_value('owner-name') == $this->get_data_value('author-name'));
+
 					if((! $owner_linkmatch) && (! $alias_linkmatch) && (! $owner_namematch)) {
 
 						// The author url doesn't match the owner (typically the contact)
@@ -619,7 +735,7 @@ class Item extends BaseObject {
 						// well that it's the same Bob Smith. 
 
 						// But it could be somebody else with the same name. It just isn't highly likely. 
-						
+
 
 						$this->owner_photo = $this->get_data_value('owner-avatar');
 						$this->owner_name = $this->get_data_value('owner-name');

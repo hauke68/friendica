@@ -64,13 +64,13 @@ function contact_remove($id) {
 
 	$archive = get_pconfig($r[0]['uid'], 'system','archive_removed_contacts');
 	if($archive) {
-		q("update contact set `archive` = 1, `network` = 'none', `writable` = 0 where id = %d limit 1",
+		q("update contact set `archive` = 1, `network` = 'none', `writable` = 0 where id = %d",
 			intval($id)
 		);
 		return;
 	}
 
-	q("DELETE FROM `contact` WHERE `id` = %d LIMIT 1",
+	q("DELETE FROM `contact` WHERE `id` = %d",
 		intval($id)
 	);
 	q("DELETE FROM `item` WHERE `contact-id` = %d ",
@@ -148,7 +148,7 @@ function mark_for_death($contact) {
 		return;
 
 	if($contact['term-date'] == '0000-00-00 00:00:00') {
-		q("UPDATE `contact` SET `term-date` = '%s' WHERE `id` = %d LIMIT 1",
+		q("UPDATE `contact` SET `term-date` = '%s' WHERE `id` = %d",
 				dbesc(datetime_convert()),
 				intval($contact['id'])
 		);
@@ -166,7 +166,7 @@ function mark_for_death($contact) {
 			// archive them rather than delete
 			// though if the owner tries to unarchive them we'll start the whole process over again
 
-			q("update contact set `archive` = 1 where id = %d limit 1",
+			q("update contact set `archive` = 1 where id = %d",
 				intval($contact['id'])
 			);
 			q("UPDATE `item` SET `private` = 2 WHERE `contact-id` = %d AND `uid` = %d", intval($contact['id']), intval($contact['uid']));
@@ -181,7 +181,7 @@ function mark_for_death($contact) {
 if(! function_exists('unmark_for_death')) {
 function unmark_for_death($contact) {
 	// It's a miracle. Our dead contact has inexplicably come back to life.
-	q("UPDATE `contact` SET `term-date` = '%s' WHERE `id` = %d LIMIT 1",
+	q("UPDATE `contact` SET `term-date` = '%s' WHERE `id` = %d",
 		dbesc('0000-00-00 00:00:00'),
 		intval($contact['id'])
 	);
@@ -197,6 +197,7 @@ function contact_photo_menu($contact) {
 	$status_link="";
 	$photos_link="";
 	$posts_link="";
+	$contact_drop_link = "";
 	$poke_link="";
 
 	$sparkle = false;
@@ -219,16 +220,19 @@ function contact_photo_menu($contact) {
 
 	$poke_link = $a->get_baseurl() . '/poke/?f=&c=' . $contact['id'];
 	$contact_url = $a->get_baseurl() . '/contacts/' . $contact['id'];
-	$posts_link = $a->get_baseurl() . '/network/?cid=' . $contact['id'];
+	$posts_link = $a->get_baseurl() . '/network/0?nets=all&cid=' . $contact['id'];
+	$contact_drop_link = $a->get_baseurl() . "/contacts/" . $contact['id'] . '/drop?confirm=1';
+	
 
 	$menu = Array(
-		t("Poke") => $poke_link,
-		t("View Status") => $status_link,
-		t("View Profile") => $profile_link,
-		t("View Photos") => $photos_link,		
-		t("Network Posts") => $posts_link, 
-		t("Edit Contact") => $contact_url,
-		t("Send PM") => $pm_url,
+		'poke' => array(t("Poke"), $poke_link),
+		'status' => array(t("View Status"), $status_link),
+		'profile' => array(t("View Profile"), $profile_link),
+		'photos' => array(t("View Photos"), $photos_link),		
+		'network' => array(t("Network Posts"), $posts_link), 
+		'edit' => array(t("Edit Contact"), $contact_url),
+		'drop' => array(t("Drop Contact"), $contact_drop_link),
+		'pm' => array(t("Send PM"), $pm_url),
 	);
 	
 	
@@ -236,7 +240,7 @@ function contact_photo_menu($contact) {
 	
 	call_hooks('contact_photo_menu', $args);
 	
-	$o = "";
+/*	$o = "";
 	foreach($menu as $k=>$v){
 		if ($v!="") {
 			if(($k !== t("Network Posts")) && ($k !== t("Send PM")) && ($k !== t('Edit Contact')))
@@ -245,7 +249,16 @@ function contact_photo_menu($contact) {
 				$o .= "<li><a href=\"$v\">$k</a></li>\n";
 		}
 	}
-	return $o;
+	return $o;*/
+	foreach($menu as $k=>$v){
+		if ($v[1]!="") {
+			if(($v[0] !== t("Network Posts")) && ($v[0] !== t("Send PM")) && ($v[0] !== t('Edit Contact')))
+				$menu[$k][2] = 1;
+			else
+				$menu[$k][2] = 0;
+		}
+	}
+	return $menu;
 }}
 
 

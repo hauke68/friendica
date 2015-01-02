@@ -3,6 +3,8 @@
 
 function starred_init(&$a) {
 
+	require_once("include/threads.php");
+
 	$starred = 0;
 
 	if(! local_user())
@@ -22,12 +24,24 @@ function starred_init(&$a) {
 	if(! intval($r[0]['starred']))
 		$starred = 1;
 
-	$r = q("UPDATE item SET starred = %d WHERE uid = %d and id = %d LIMIT 1",
+	$r = q("UPDATE item SET starred = %d WHERE uid = %d and id = %d",
 		intval($starred),
 		intval(local_user()),
 		intval($message_id)
 	);
- 
+
+	update_thread($message_id);
+
+	// See if we've been passed a return path to redirect to
+	$return_path = ((x($_REQUEST,'return')) ? $_REQUEST['return'] : '');
+	if($return_path) {
+		$rand = '_=' . time();
+		if(strpos($return_path, '?')) $rand = "&$rand";
+		else $rand = "?$rand";
+
+		goaway($a->get_baseurl() . "/" . $return_path . $rand);
+	}
+
 	// the json doesn't really matter, it will either be 0 or 1
 
 	echo json_encode($starred);

@@ -14,7 +14,7 @@ function scrape_dfrn($url) {
 
 	$s = fetch_url($url);
 
-	if(! $s) 
+	if(! $s)
 		return $ret;
 
 	$headers = $a->get_curl_headers();
@@ -23,7 +23,7 @@ function scrape_dfrn($url) {
 
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			// don't try and run feeds through the html5 parser
 			if(stristr($line,'content-type:') && ((stristr($line,'application/atom+xml')) || (stristr($line,'application/rss+xml'))))
 				return ret;
@@ -120,7 +120,7 @@ function scrape_meta($url) {
 
 	$s = fetch_url($url);
 
-	if(! $s) 
+	if(! $s)
 		return $ret;
 
 	$headers = $a->get_curl_headers();
@@ -128,7 +128,7 @@ function scrape_meta($url) {
 
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			// don't try and run feeds through the html5 parser
 			if(stristr($line,'content-type:') && ((stristr($line,'application/atom+xml')) || (stristr($line,'application/rss+xml'))))
 				return ret;
@@ -169,13 +169,13 @@ function scrape_vcard($url) {
 
 	$s = fetch_url($url);
 
-	if(! $s) 
+	if(! $s)
 		return $ret;
 
 	$headers = $a->get_curl_headers();
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			// don't try and run feeds through the html5 parser
 			if(stristr($line,'content-type:') && ((stristr($line,'application/atom+xml')) || (stristr($line,'application/rss+xml'))))
 				return ret;
@@ -236,14 +236,14 @@ function scrape_feed($url) {
 	logger('scrape_feed: returns: ' . $code . ' headers=' . $headers, LOGGER_DEBUG);
 
 	if(! $s) {
-		logger('scrape_feed: no data returned for ' . $url); 
+		logger('scrape_feed: no data returned for ' . $url);
 		return $ret;
 	}
 
 
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			if(stristr($line,'content-type:')) {
 				if(stristr($line,'application/atom+xml') || stristr($s,'<feed')) {
 					$ret['feed_atom'] = $url;
@@ -299,7 +299,7 @@ function scrape_feed($url) {
 				if(! x($ret,'feed_rss'))
 					$ret['feed_rss'] = $item->getAttribute('href');
 			}
-		}	
+		}
 	}
 
 	// Drupal and perhaps others only provide relative URL's. Turn them into absolute.
@@ -346,12 +346,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 	$network = null;
 	$diaspora = false;
 	$diaspora_base = '';
-	$diaspora_guid = '';	
+	$diaspora_guid = '';
 	$diaspora_key = '';
 	$has_lrdd = false;
 	$email_conversant = false;
 
-	$twitter = ((strpos($url,'twitter.com') !== false) ? true : false);
+	// Twitter is deactivated since twitter closed its old API
+	//$twitter = ((strpos($url,'twitter.com') !== false) ? true : false);
 	$lastfm  = ((strpos($url,'last.fm/user') !== false) ? true : false);
 
 	$at_addr = ((strpos($url,'@') !== false) ? true : false);
@@ -485,7 +486,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				}
 			}
 		}
-	}	
+	}
 
 	if($mode == PROBE_NORMAL) {
 		if(strlen($zot)) {
@@ -531,7 +532,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 		}
 		if(strpos($url,'@'))
 			$addr = str_replace('acct:', '', $url);
-	}			
+	}
 
 	if($network !== NETWORK_ZOT && $network !== NETWORK_DFRN && $network !== NETWORK_MAIL) {
 		if($diaspora)
@@ -544,13 +545,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			$vcard = scrape_vcard($hcard);
 
 			// Google doesn't use absolute url in profile photos
-	
+
 			if((x($vcard,'photo')) && substr($vcard['photo'],0,1) == '/') {
 				$h = @parse_url($hcard);
 				if($h)
 					$vcard['photo'] = $h['scheme'] . '://' . $h['host'] . $vcard['photo'];
 			}
-		
+
 			logger('probe_url: scrape_vcard: ' . print_r($vcard,true), LOGGER_DATA);
 		}
 
@@ -561,7 +562,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			$vcard['nick'] = $addr_parts[0];
 		}
 
-		if($twitter) {		
+		/* if($twitter) {
 			logger('twitter: setup');
 			$tid = basename($url);
 			$tapi = 'https://api.twitter.com/1/statuses/user_timeline.rss';
@@ -574,7 +575,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			$vcard['photo'] = 'https://api.twitter.com/1/users/profile_image?screen_name=' . $tid . '&size=bigger';
 			$vcard['nick'] = $tid;
 			$vcard['fn'] = $tid;
-		}
+		} */
 
 		if($lastfm) {
 			$profile = $url;
@@ -609,14 +610,14 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			logger('probe_url: scrape_feed ' . (($poll)? $poll : $url) . ' returns: ' . print_r($feedret,true), LOGGER_DATA);
 			if(count($feedret) && ($feedret['feed_atom'] || $feedret['feed_rss'])) {
 				$poll = ((x($feedret,'feed_atom')) ? unamp($feedret['feed_atom']) : unamp($feedret['feed_rss']));
-				if(! x($vcard)) 
+				if(! x($vcard))
 					$vcard = array();
 			}
 
 			if(x($feedret,'photo') && (! x($vcard,'photo')))
 				$vcard['photo'] = $feedret['photo'];
 			require_once('library/simplepie/simplepie.inc');
-		    $feed = new SimplePie();
+			$feed = new SimplePie();
 			$xml = fetch_url($poll);
 
 			logger('probe_url: fetch feed: ' . $poll . ' returns: ' . $xml, LOGGER_DATA);
@@ -624,9 +625,10 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 
 			logger('probe_url: scrape_feed: headers: ' . $a->get_curl_headers(), LOGGER_DATA);
 
-   			$feed->set_raw_data($xml);
+			// Don't try and parse an empty string
+   			$feed->set_raw_data(($xml) ? $xml : '<?xml version="1.0" encoding="utf-8" ?><xml></xml>');
 
-		    $feed->init();
+			$feed->init();
 			if($feed->error())
 				logger('probe_url: scrape_feed: Error parsing XML: ' . $feed->error());
 
@@ -635,7 +637,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				$vcard['photo'] = $feed->get_image_url();
 			$author = $feed->get_author();
 
-			if($author) {			
+			if($author) {
 				$vcard['fn'] = unxmlify(trim($author->get_name()));
 				if(! $vcard['fn'])
 					$vcard['fn'] = trim(unxmlify($author->get_email()));
@@ -646,18 +648,18 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 					$profile = trim(unxmlify($author->get_link()));
 				if(! $vcard['photo']) {
 					$rawtags = $feed->get_feed_tags( SIMPLEPIE_NAMESPACE_ATOM_10, 'author');
-    				if($rawtags) {
+					if($rawtags) {
 						$elems = $rawtags[0]['child'][SIMPLEPIE_NAMESPACE_ATOM_10];
 						if((x($elems,'link')) && ($elems['link'][0]['attribs']['']['rel'] === 'photo'))
 							$vcard['photo'] = $elems['link'][0]['attribs']['']['href'];
-        			}
+					}
 				}
 			}
 			else {
 				$item = $feed->get_item(0);
 				if($item) {
 					$author = $item->get_author();
-					if($author) {			
+					if($author) {
 						$vcard['fn'] = trim(unxmlify($author->get_name()));
 						if(! $vcard['fn'])
 							$vcard['fn'] = trim(unxmlify($author->get_email()));
@@ -674,11 +676,11 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 					}
 					if(! $vcard['photo']) {
 						$rawtags = $item->get_item_tags( SIMPLEPIE_NAMESPACE_ATOM_10, 'author');
-    					if($rawtags) {
+						if($rawtags) {
 							$elems = $rawtags[0]['child'][SIMPLEPIE_NAMESPACE_ATOM_10];
 							if((x($elems,'link')) && ($elems['link'][0]['attribs']['']['rel'] === 'photo'))
 								$vcard['photo'] = $elems['link'][0]['attribs']['']['href'];
-        				}
+						}
 					}
 				}
 			}
@@ -688,8 +690,13 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 			if($poll === $profile)
 				$lnk = $feed->get_permalink();
 			if(isset($lnk) && strlen($lnk))
-				$profile = $lnk;	
+				$profile = $lnk;
 
+			if(! $network) {
+				$network = NETWORK_FEED;
+				// If it is a feed, don't take the author name as feed name
+				unset($vcard['fn']);
+			}
 			if(! (x($vcard,'fn')))
 				$vcard['fn'] = notags($feed->get_title());
 			if(! (x($vcard,'fn')))
@@ -704,8 +711,6 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 				if(strpos($vcard['nick'],' '))
 					$vcard['nick'] = trim(substr($vcard['nick'],0,strpos($vcard['nick'],' ')));
 			}
-			if(! $network)
-				$network = NETWORK_FEED;
 			if(! $priority)
 				$priority = 2;
 		}
@@ -713,7 +718,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 
 	if(! x($vcard,'photo')) {
 		$a = get_app();
-		$vcard['photo'] = $a->get_baseurl() . '/images/person-175.jpg' ; 
+		$vcard['photo'] = $a->get_baseurl() . '/images/person-175.jpg' ;
 	}
 
 	if(! $profile)
@@ -726,7 +731,7 @@ function probe_url($url, $mode = PROBE_NORMAL) {
 
 	$vcard['fn'] = notags($vcard['fn']);
 	$vcard['nick'] = str_replace(' ','',notags($vcard['nick']));
-		
+
 	$result['name'] = $vcard['fn'];
 	$result['nick'] = $vcard['nick'];
 	$result['url'] = $profile;

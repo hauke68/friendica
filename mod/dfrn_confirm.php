@@ -9,10 +9,12 @@
  *   1. A form was submitted by our user approving a friendship that originated elsewhere.
  *      This may also be called from dfrn_request to automatically approve a friendship.
  *
- *   2. We may be the target or other side of the conversation to scenario 1, and will 
+ *   2. We may be the target or other side of the conversation to scenario 1, and will
  *      interact with that process on our own user's behalf.
- *   
+ *
  */
+
+require_once('include/enotify.php');
 
 function dfrn_confirm_post(&$a,$handsfree = null) {
 
@@ -35,11 +37,11 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 		/**
 		 *
-		 * Main entry point. Scenario 1. Our user received a friend request notification (perhaps 
-		 * from another site) and clicked 'Approve'. 
+		 * Main entry point. Scenario 1. Our user received a friend request notification (perhaps
+		 * from another site) and clicked 'Approve'.
 		 * $POST['source_url'] is not set. If it is, it indicates Scenario 2.
 		 *
-		 * We may also have been called directly from dfrn_request ($handsfree != null) due to 
+		 * We may also have been called directly from dfrn_request ($handsfree != null) due to
 		 * this being a page type which supports automatic friend acceptance. That is also Scenario 1
 		 * since we are operating on behalf of our registered user to approve a friendship.
 		 *
@@ -52,7 +54,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		if(! $uid) {
 			notice( t('Permission denied.') . EOL );
 			return;
-		}	
+		}
 
 		$user = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
 			intval($uid)
@@ -61,13 +63,13 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		if(! $user) {
 			notice( t('Profile not found.') . EOL );
 			return;
-		}	
+		}
 
 
 		// These data elements may come from either the friend request notification form or $handsfree array.
 
 		if(is_array($handsfree)) {
-			logger('dfrn_confirm: Confirm in handsfree mode');
+			logger('Confirm in handsfree mode');
 			$dfrn_id   = $handsfree['dfrn_id'];
 			$intro_id  = $handsfree['intro_id'];
 			$duplex    = $handsfree['duplex'];
@@ -86,7 +88,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		/**
 		 *
 		 * Ensure that dfrn_id has precedence when we go to find the contact record.
-		 * We only want to search based on contact id if there is no dfrn_id, 
+		 * We only want to search based on contact id if there is no dfrn_id,
 		 * e.g. for OStatus network followers.
 		 *
 		 */
@@ -94,15 +96,15 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		if(strlen($dfrn_id))
 			$cid = 0;
 
-		logger('dfrn_confirm: Confirming request for dfrn_id (issued) ' . $dfrn_id);
+		logger('Confirming request for dfrn_id (issued) ' . $dfrn_id);
 		if($cid)
-			logger('dfrn_confirm: Confirming follower with contact_id: ' . $cid);
+			logger('Confirming follower with contact_id: ' . $cid);
 
 
 		/**
 		 *
 		 * The other person will have been issued an ID when they first requested friendship.
-		 * Locate their record. At this time, their record will have both pending and blocked set to 1. 
+		 * Locate their record. At this time, their record will have both pending and blocked set to 1.
 		 * There won't be any dfrn_id if this is a network follower, so use the contact_id instead.
 		 *
 		 */
@@ -114,7 +116,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		);
 
 		if(! count($r)) {
-			logger('dfrn_confirm: Contact not found in DB.'); 
+			logger('Contact not found in DB.');
 			notice( t('Contact not found.') . EOL );
 			notice( t('This may occasionally happen if contact was requested by both persons and it has already been approved.') . EOL );
 			return;
@@ -127,7 +129,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		$site_pubkey  = $contact['site-pubkey'];
 		$dfrn_confirm = $contact['confirm'];
 		$aes_allow    = $contact['aes_allow'];
-		
+
 		$network = ((strlen($contact['issued-id'])) ? NETWORK_DFRN : NETWORK_OSTATUS);
 
 		if($contact['network'])
@@ -139,40 +141,41 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			 *
 			 * Generate a key pair for all further communications with this person.
 			 * We have a keypair for every contact, and a site key for unknown people.
-			 * This provides a means to carry on relationships with other people if 
-			 * any single key is compromised. It is a robust key. We're much more 
-			 * worried about key leakage than anybody cracking it.  
+			 * This provides a means to carry on relationships with other people if
+			 * any single key is compromised. It is a robust key. We're much more
+			 * worried about key leakage than anybody cracking it.
 			 *
 			 */
 			require_once('include/crypto.php');
 
 			$res = new_keypair(4096);
 
+
 			$private_key = $res['prvkey'];
 			$public_key  = $res['pubkey'];
 
 			// Save the private key. Send them the public key.
 
-			$r = q("UPDATE `contact` SET `prvkey` = '%s' WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `prvkey` = '%s' WHERE `id` = %d AND `uid` = %d",
 				dbesc($private_key),
 				intval($contact_id),
-				intval($uid) 
+				intval($uid)
 			);
 
 			$params = array();
 
 			/**
 			 *
-			 * Per the DFRN protocol, we will verify both ends by encrypting the dfrn_id with our 
+			 * Per the DFRN protocol, we will verify both ends by encrypting the dfrn_id with our
 			 * site private key (person on the other end can decrypt it with our site public key).
 			 * Then encrypt our profile URL with the other person's site public key. They can decrypt
 			 * it with their site private key. If the decryption on the other end fails for either
-			 * item, it indicates tampering or key failure on at least one site and we will not be 
+			 * item, it indicates tampering or key failure on at least one site and we will not be
 			 * able to provide a secure communication pathway.
 			 *
-			 * If other site is willing to accept full encryption, (aes_allow is 1 AND we have php5.3 
-			 * or later) then we encrypt the personal public key we send them using AES-256-CBC and a 
-			 * random key which is encrypted with their site public key.  
+			 * If other site is willing to accept full encryption, (aes_allow is 1 AND we have php5.3
+			 * or later) then we encrypt the personal public key we send them using AES-256-CBC and a
+			 * random key which is encrypted with their site public key.
 			 *
 			 */
 
@@ -205,7 +208,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			if($user[0]['page-flags'] == PAGE_PRVGROUP)
 				$params['page'] = 2;
 
-			logger('dfrn_confirm: Confirm: posting data to ' . $dfrn_confirm . ': ' . print_r($params,true), LOGGER_DATA);
+			logger('Confirm: posting data to ' . $dfrn_confirm . ': ' . print_r($params,true), LOGGER_DATA);
 
 			/**
 			 *
@@ -219,10 +222,10 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 
 			$res = post_url($dfrn_confirm,$params);
 
-			logger('dfrn_confirm: Confirm: received data: ' . $res, LOGGER_DATA);
+			logger(' Confirm: received data: ' . $res, LOGGER_DATA);
 
-			// Now figure out what they responded. Try to be robust if the remote site is 
-			// having difficulty and throwing up errors of some kind. 
+			// Now figure out what they responded. Try to be robust if the remote site is
+			// having difficulty and throwing up errors of some kind.
 
 			$leading_junk = substr($res,0,strpos($res,'<?xml'));
 
@@ -232,18 +235,24 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 					// No XML at all, this exchange is messed up really bad.
 					// We shouldn't proceed, because the xml parser might choke,
 					// and $status is going to be zero, which indicates success.
-					// We can hardly call this a success.  
-	
+					// We can hardly call this a success.
+
 				notice( t('Response from remote site was not understood.') . EOL);
 				return;
 			}
 
 			if(strlen($leading_junk) && get_config('system','debugging')) {
-	
+
 					// This might be more common. Mixed error text and some XML.
 					// If we're configured for debugging, show the text. Proceed in either case.
 
 				notice( t('Unexpected response from remote site: ') . EOL . $leading_junk . EOL );
+			}
+
+			if(stristr($res, "<status")===false) {
+				// wrong xml! stop here!
+				notice( t('Unexpected response from remote site: ') . EOL . htmlspecialchars($res) . EOL );
+				return;
 			}
 
 			$xml = parse_xml_string($res);
@@ -258,10 +267,10 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				case 1:
 					// birthday paradox - generate new dfrn-id and fall through.
 					$new_dfrn_id = random_string();
-					$r = q("UPDATE contact SET `issued-id` = '%s' WHERE `id` = %d AND `uid` = %d LIMIT 1",
+					$r = q("UPDATE contact SET `issued-id` = '%s' WHERE `id` = %d AND `uid` = %d",
 						dbesc($new_dfrn_id),
 						intval($contact_id),
-						intval($uid) 
+						intval($uid)
 					);
 
 				case 2:
@@ -279,17 +288,17 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				}
 
 			if(($status == 0) && ($intro_id)) {
-	
+
 				// Success. Delete the notification.
-	
-				$r = q("DELETE FROM `intro` WHERE `id` = %d AND `uid` = %d LIMIT 1",
+
+				$r = q("DELETE FROM `intro` WHERE `id` = %d AND `uid` = %d",
 					intval($intro_id),
 					intval($uid)
 				);
-				
+
 			}
 
-			if($status != 0) 
+			if($status != 0)
 				return;
 		}
 
@@ -307,7 +316,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		require_once('include/Photo.php');
 
 		$photos = import_profile_photo($contact['photo'],$uid,$contact_id);
-		
+
 		logger('dfrn_confirm: confirm - imported photos');
 
 		if($network === NETWORK_DFRN) {
@@ -319,19 +328,19 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			if(($relation == CONTACT_IS_SHARING) && ($duplex))
 				$duplex = 0;
 
-			$r = q("UPDATE `contact` SET 
-				`photo` = '%s', 
+			$r = q("UPDATE `contact` SET
+				`photo` = '%s',
 				`thumb` = '%s',
-				`micro` = '%s', 
-				`rel` = %d, 
-				`name-date` = '%s', 
-				`uri-date` = '%s', 
-				`avatar-date` = '%s', 
-				`blocked` = 0, 
+				`micro` = '%s',
+				`rel` = %d,
+				`name-date` = '%s',
+				`uri-date` = '%s',
+				`avatar-date` = '%s',
+				`blocked` = 0,
 				`pending` = 0,
 				`duplex` = %d,
 				`hidden` = %d,
-				`network` = 'dfrn' WHERE `id` = %d LIMIT 1
+				`network` = 'dfrn' WHERE `id` = %d
 			",
 				dbesc($photos[0]),
 				dbesc($photos[1]),
@@ -345,7 +354,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				intval($contact_id)
 			);
 		}
-		else {  
+		else {
 
 			// $network !== NETWORK_DFRN
 
@@ -378,27 +387,27 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 					$writable = 1;
 			}
 
-			$r = q("DELETE FROM `intro` WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			$r = q("DELETE FROM `intro` WHERE `id` = %d AND `uid` = %d",
 				intval($intro_id),
 				intval($uid)
 			);
 
 
-			$r = q("UPDATE `contact` SET `photo` = '%s', 
+			$r = q("UPDATE `contact` SET `photo` = '%s',
 				`thumb` = '%s',
-				`micro` = '%s', 
-				`name-date` = '%s', 
-				`uri-date` = '%s', 
-				`avatar-date` = '%s', 
+				`micro` = '%s',
+				`name-date` = '%s',
+				`uri-date` = '%s',
+				`avatar-date` = '%s',
 				`notify` = '%s',
 				`poll` = '%s',
-				`blocked` = 0, 
+				`blocked` = 0,
 				`pending` = 0,
 				`network` = '%s',
 				`writable` = %d,
 				`hidden` = %d,
 				`rel` = %d
-				WHERE `id` = %d LIMIT 1
+				WHERE `id` = %d
 			",
 				dbesc($photos[0]),
 				dbesc($photos[1]),
@@ -413,7 +422,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				intval($hidden),
 				intval($new_relation),
 				intval($contact_id)
-			);			
+			);
 		}
 
 		if($r === false)
@@ -455,7 +464,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				if(count($self)) {
 
 					$arr = array();
-					$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $uid); 
+					$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $uid);
 					$arr['uid'] = $uid;
 					$arr['contact-id'] = $self[0]['id'];
 					$arr['wall'] = 1;
@@ -511,7 +520,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		if($handsfree === null)
 			goaway($a->get_baseurl() . '/contacts/' . intval($contact_id));
 		else
-			return;  
+			return;
 		//NOTREACHED
 	}
 
@@ -522,7 +531,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 	 *
 	 * Begin Scenario 2. This is the remote response to the above scenario.
 	 * This will take place on the site that originally initiated the friend request.
-	 * In the section above where the confirming party makes a POST and 
+	 * In the section above where the confirming party makes a POST and
 	 * retrieves xml status information, they are communicating with the following code.
 	 *
 	 */
@@ -538,7 +547,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		$duplex     = ((x($_POST,'duplex'))       ? intval($_POST['duplex'])       : 0 );
 		$page       = ((x($_POST,'page'))         ? intval($_POST['page'])         : 0 );
 		$version_id = ((x($_POST,'dfrn_version')) ? (float) $_POST['dfrn_version'] : 2.0);
-	
+
 		$forum = (($page == 1) ? 1 : 0);
 		$prv   = (($page == 2) ? 1 : 0);
 
@@ -603,7 +612,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				// this is either a bogus confirmation (?) or we deleted the original introduction.
 				$message = t('Contact record was not found for you on our site.');
 				xml_status(3,$message);
-				return; // NOTREACHED 
+				return; // NOTREACHED
 			}
 		}
 
@@ -640,7 +649,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			// NOTREACHED
 		}
 
-		$r = q("UPDATE `contact` SET `dfrn-id` = '%s', `pubkey` = '%s' WHERE `id` = %d LIMIT 1",
+		$r = q("UPDATE `contact` SET `dfrn-id` = '%s', `pubkey` = '%s' WHERE `id` = %d",
 			dbesc($decrypted_dfrn_id),
 			dbesc($dfrn_pubkey),
 			intval($dfrn_record)
@@ -651,10 +660,10 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		}
 
 		// It's possible that the other person also requested friendship.
-		// If it is a duplex relationship, ditch the issued-id if one exists. 
+		// If it is a duplex relationship, ditch the issued-id if one exists.
 
 		if($duplex) {
-			$r = q("UPDATE `contact` SET `issued-id` = '' WHERE `id` = %d LIMIT 1",
+			$r = q("UPDATE `contact` SET `issued-id` = '' WHERE `id` = %d",
 				intval($dfrn_record)
 			);
 		}
@@ -670,8 +679,8 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			$photo = $r[0]['photo'];
 		else
 			$photo = $a->get_baseurl() . '/images/person-175.jpg';
-				
-		require_once("Photo.php");
+
+		require_once("include/Photo.php");
 
 		$photos = import_profile_photo($photo,$local_uid,$dfrn_record);
 
@@ -684,20 +693,20 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 		if(($relation == CONTACT_IS_FOLLOWER) && ($duplex))
 			$duplex = 0;
 
-		$r = q("UPDATE `contact` SET 
-			`photo` = '%s', 
-			`thumb` = '%s', 
+		$r = q("UPDATE `contact` SET
+			`photo` = '%s',
+			`thumb` = '%s',
 			`micro` = '%s',
-			`rel` = %d, 
-			`name-date` = '%s', 
-			`uri-date` = '%s', 
-			`avatar-date` = '%s', 
-			`blocked` = 0, 
+			`rel` = %d,
+			`name-date` = '%s',
+			`uri-date` = '%s',
+			`avatar-date` = '%s',
+			`blocked` = 0,
 			`pending` = 0,
-			`duplex` = %d, 
+			`duplex` = %d,
 			`forum` = %d,
 			`prv` = %d,
-			`network` = '%s' WHERE `id` = %d LIMIT 1
+			`network` = '%s' WHERE `id` = %d
 		",
 			dbesc($photos[0]),
 			dbesc($photos[1]),
@@ -731,32 +740,21 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 			$combined = $r[0];
 
 		if((count($r)) && ($r[0]['notify-flags'] & NOTIFY_CONFIRM)) {
-
-			push_lang($r[0]['language']);
-			$tpl = (($new_relation == CONTACT_IS_FRIEND) 
-				? get_intltext_template('friend_complete_eml.tpl')
-				: get_intltext_template('intro_complete_eml.tpl'));
-		
-			$email_tpl = replace_macros($tpl, array(
-				'$sitename' => $a->config['sitename'],
-				'$siteurl' =>  $a->get_baseurl(),
-				'$username' => $r[0]['username'],
-				'$email' => $r[0]['email'],
-				'$fn' => $r[0]['name'],
-				'$dfrn_url' => $r[0]['url'],
-				'$uid' => $newuid )
-			);
-	
-			$res = mail($r[0]['email'], sprintf( t("Connection accepted at %s") , $a->config['sitename']),
-				$email_tpl,
-				'From: ' . t('Administrator') . '@' . $_SERVER['SERVER_NAME'] . "\n"
-				. 'Content-type: text/plain; charset=UTF-8' . "\n"
-				. 'Content-transfer-encoding: 8bit' );
-
-			if(!$res) {
-				// pointless throwing an error here and confusing the person at the other end of the wire.
-			}
-			pop_lang();
+			$mutual = ($new_relation == CONTACT_IS_FRIEND);
+			notification(array(
+				'type'         => NOTIFY_CONFIRM,
+				'notify_flags' => $r[0]['notify-flags'],
+				'language'     => $r[0]['language'],
+				'to_name'      => $r[0]['username'],
+				'to_email'     => $r[0]['email'],
+				'uid'          => $r[0]['uid'],
+				'link'		   => $a->get_baseurl() . '/contacts/' . $dfrn_record,
+				'source_name'  => ((strlen(stripslashes($r[0]['name']))) ? stripslashes($r[0]['name']) : t('[Name Withheld]')),
+				'source_link'  => $r[0]['url'],
+				'source_photo' => $r[0]['photo'],
+				'verb'         => ($mutual?ACTIVITY_FRIEND:ACTIVITY_FOLLOW),
+				'otype'        => 'intro'
+			));
 		}
 
 		// Send a new friend post if we are allowed to...
@@ -777,7 +775,7 @@ function dfrn_confirm_post(&$a,$handsfree = null) {
 				if(count($self)) {
 
 					$arr = array();
-					$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $local_uid); 
+					$arr['uri'] = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $local_uid);
 					$arr['uid'] = $local_uid;
 					$arr['contact-id'] = $self[0]['id'];
 					$arr['wall'] = 1;

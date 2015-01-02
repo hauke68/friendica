@@ -8,7 +8,7 @@ function uninstall_plugin($plugin){
 	q("DELETE FROM `addon` WHERE `name` = '%s' ",
 		dbesc($plugin)
 	);
-    
+
 	@include_once('addon/' . $plugin . '/' . $plugin . '.php');
 	if(function_exists($plugin . '_uninstall')) {
 		$func = $plugin . '_uninstall';
@@ -28,9 +28,9 @@ function install_plugin($plugin) {
 	if(function_exists($plugin . '_install')) {
 		$func = $plugin . '_install';
 		$func();
-		
+
 		$plugin_admin = (function_exists($plugin."_plugin_admin")?1:0);
-		
+
 		$r = q("INSERT INTO `addon` (`name`, `installed`, `timestamp`, `plugin_admin`) VALUES ( '%s', 1, %d , %d ) ",
 			dbesc($plugin),
 			intval($t),
@@ -42,7 +42,7 @@ function install_plugin($plugin) {
 		// This way the system won't fall over dead during the update.
 
 		if(file_exists('addon/' . $plugin . '/.hidden')) {
-			q("update addon set hidden = 1 where name = '%s' limit 1",
+			q("update addon set hidden = 1 where name = '%s'",
 				dbesc($plugin)
 			);
 		}
@@ -80,7 +80,7 @@ function reload_plugins() {
 				if(file_exists($fname)) {
 					$t = @filemtime($fname);
 					foreach($installed as $i) {
-						if(($i['name'] == $pl) && ($i['timestamp'] != $t)) {	
+						if(($i['name'] == $pl) && ($i['timestamp'] != $t)) {
 							logger('Reloading plugin: ' . $i['name']);
 							@include_once($fname);
 
@@ -92,7 +92,7 @@ function reload_plugins() {
 								$func = $pl . '_install';
 								$func();
 							}
-							q("UPDATE `addon` SET `timestamp` = %d WHERE `id` = %d LIMIT 1",
+							q("UPDATE `addon` SET `timestamp` = %d WHERE `id` = %d",
 								intval($t),
 								intval($i['id'])
 							);
@@ -104,7 +104,7 @@ function reload_plugins() {
 	}
 
 }}
-				
+
 
 
 
@@ -132,7 +132,7 @@ function register_hook($hook,$file,$function,$priority=0) {
 if(! function_exists('unregister_hook')) {
 function unregister_hook($hook,$file,$function) {
 
-	$r = q("DELETE FROM `hook` WHERE `hook` = '%s' AND `file` = '%s' AND `function` = '%s' LIMIT 1",
+	$r = q("DELETE FROM `hook` WHERE `hook` = '%s' AND `file` = '%s' AND `function` = '%s'",
 		dbesc($hook),
 		dbesc($file),
 		dbesc($function)
@@ -145,7 +145,7 @@ if(! function_exists('load_hooks')) {
 function load_hooks() {
 	$a = get_app();
 	$a->hooks = array();
-	$r = q("SELECT * FROM `hook` WHERE 1 ORDER BY `priority` DESC");
+	$r = q("SELECT * FROM `hook` WHERE 1 ORDER BY `priority` DESC, `file`");
 	if(count($r)) {
 		foreach($r as $rr) {
 			if(! array_key_exists($rr['hook'],$a->hooks))
@@ -158,10 +158,16 @@ function load_hooks() {
 
 if(! function_exists('call_hooks')) {
 function call_hooks($name, &$data = null) {
+	$stamp1 = microtime(true);
+
 	$a = get_app();
 
 	if((is_array($a->hooks)) && (array_key_exists($name,$a->hooks))) {
 		foreach($a->hooks[$name] as $hook) {
+			// Don't run a theme's hook if the user isn't using the theme
+			if(strpos($hook[0], 'view/theme/') !== false && strpos($hook[0], 'view/theme/'.current_theme()) === false)
+				continue;
+
 			@include_once($hook[0]);
 			if(function_exists($hook[1])) {
 				$func = $hook[1];
@@ -169,7 +175,7 @@ function call_hooks($name, &$data = null) {
 			}
 			else {
 				// remove orphan hooks
-				q("delete from hook where hook = '%s' and file = '$s' and function = '%s' limit 1",
+				q("delete from hook where hook = '%s' and file = '%s' and function = '%s'",
 					dbesc($name),
 					dbesc($hook[0]),
 					dbesc($hook[1])
@@ -177,14 +183,28 @@ function call_hooks($name, &$data = null) {
 			}
 		}
 	}
-
 }}
 
+//check if an app_menu hook exist for plugin $name.
+//Return true if the plugin is an app
+if(! function_exists('plugin_is_app')) {
+function plugin_is_app($name) {
+	$a = get_app();
+
+	if(is_array($a->hooks) && (array_key_exists('app_menu',$a->hooks))) {
+		foreach($a->hooks['app_menu'] as $hook) {
+			if($hook[0] == 'addon/'.$name.'/'.$name.'.php')
+				return true;
+		}
+	}
+
+	return false;
+}}
 
 /*
  * parse plugin comment in search of plugin infos.
  * like
- * 	
+ *
  * 	 * Name: Plugin
  *   * Description: A plugin which plugs in
  * 	 * Version: 1.2.3
@@ -195,18 +215,25 @@ function call_hooks($name, &$data = null) {
 
 if (! function_exists('get_plugin_info')){
 function get_plugin_info($plugin){
+
+	$a = get_app();
+
 	$info=Array(
 		'name' => $plugin,
 		'description' => "",
 		'author' => array(),
-		'version' => ""
+		'version' => "",
+		'status' => ""
 	);
-	
+
 	if (!is_file("addon/$plugin/$plugin.php")) return $info;
-	
+
+	$stamp1 = microtime(true);
 	$f = file_get_contents("addon/$plugin/$plugin.php");
+	$a->save_timestamp($stamp1, "file");
+
 	$r = preg_match("|/\*.*\*/|msU", $f, $m);
-	
+
 	if ($r){
 		$ll = explode("\n", $m[0]);
 		foreach( $ll as $l ) {
@@ -226,10 +253,10 @@ function get_plugin_info($plugin){
 						$info[$k]=$v;
 					}
 				}
-				
+
 			}
 		}
-		
+
 	}
 	return $info;
 }}
@@ -238,7 +265,7 @@ function get_plugin_info($plugin){
 /*
  * parse theme comment in search of theme infos.
  * like
- * 	
+ *
  * 	 * Name: My Theme
  *   * Description: My Cool Theme
  * 	 * Version: 1.2.3
@@ -266,11 +293,14 @@ function get_theme_info($theme){
 		$info['unsupported'] = true;
 
 	if (!is_file("view/theme/$theme/theme.php")) return $info;
-	
+
+	$a = get_app();
+	$stamp1 = microtime(true);
 	$f = file_get_contents("view/theme/$theme/theme.php");
+	$a->save_timestamp($stamp1, "file");
+
 	$r = preg_match("|/\*.*\*/|msU", $f, $m);
-	
-	
+
 	if ($r){
 		$ll = explode("\n", $m[0]);
 		foreach( $ll as $l ) {
@@ -299,10 +329,10 @@ function get_theme_info($theme){
 						$info[$k]=$v;
 					}
 				}
-				
+
 			}
 		}
-		
+
 	}
 	return $info;
 }}
@@ -317,6 +347,42 @@ function get_theme_screenshot($theme) {
 	}
 	return($a->get_baseurl() . '/images/blank.png');
 }
+
+// install and uninstall theme
+if (! function_exists('uninstall_theme')){
+function uninstall_theme($theme){
+	logger("Addons: uninstalling theme " . $theme);
+
+	@include_once("view/theme/$theme/theme.php");
+	if(function_exists("{$theme}_uninstall")) {
+		$func = "{$theme}_uninstall";
+		$func();
+	}
+}}
+
+if (! function_exists('install_theme')){
+function install_theme($theme) {
+	// silently fail if theme was removed
+
+	if(! file_exists("view/theme/$theme/theme.php"))
+		return false;
+
+	logger("Addons: installing theme $theme");
+
+	@include_once("view/theme/$theme/theme.php");
+
+	if(function_exists("{$theme}_install")) {
+		$func = "{$theme}_install";
+		$func();
+		return true;
+	}
+	else {
+		logger("Addons: FAILED installing theme $theme");
+		return false;
+	}
+
+}}
+
 
 
 // check service_class restrictions. If there are no service_classes defined, everything is allowed.

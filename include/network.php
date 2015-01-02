@@ -2,18 +2,31 @@
 
 
 // curl wrapper. If binary flag is true, return binary
-// results. 
+// results.
 
+// Set the cookiejar argument to a string (e.g. "/tmp/friendica-cookies.txt")
+// to preserve cookies from one request to the next.
 if(! function_exists('fetch_url')) {
-function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null) {
+function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_content=Null, $cookiejar = 0) {
+
+	$stamp1 = microtime(true);
 
 	$a = get_app();
 
 	$ch = @curl_init($url);
-	if(($redirects > 8) || (! $ch)) 
+	if(($redirects > 8) || (! $ch))
 		return false;
 
 	@curl_setopt($ch, CURLOPT_HEADER, true);
+
+	if($cookiejar) {
+		curl_setopt($ch, CURLOPT_COOKIEJAR, $cookiejar);
+		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookiejar);
+	}
+
+//  These settings aren't needed. We're following the location already.
+//	@curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+//	@curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
 
 	if (!is_null($accept_content)){
 		curl_setopt($ch,CURLOPT_HTTPHEADER, array (
@@ -22,8 +35,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	}
 
 	@curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
-	//@curl_setopt($ch, CURLOPT_USERAGENT, "Friendica");
-	@curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (compatible; Friendica)");
+	@curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
 
 	if(intval($timeout)) {
@@ -60,7 +72,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	$base = $s;
 	$curl_info = @curl_getinfo($ch);
 	$http_code = $curl_info['http_code'];
-//	logger('fetch_url:' . $http_code . ' data: ' . $s);
+	logger('fetch_url '.$url.': '.$http_code." ".$s, LOGGER_DATA);
 	$header = '';
 
 	// Pull out multiple headers, e.g. proxy and continuation headers
@@ -73,23 +85,35 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 	}
 
 	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
+		$new_location_info = @parse_url($curl_info["redirect_url"]);
+		$old_location_info = @parse_url($curl_info["url"]);
+
+		$newurl = $curl_info["redirect_url"];
+
+		if (($new_location_info["path"] == "") AND ($new_location_info["host"] != ""))
+			$newurl = $new_location_info["scheme"]."://".$new_location_info["host"].$old_location_info["path"];
+
 		$matches = array();
-		preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
-		$newurl = trim(array_pop($matches));
+		if (preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches)) {
+			$newurl = trim(array_pop($matches));
+		}
 		if(strpos($newurl,'/') === 0)
-			$newurl = $url . $newurl;
-		$url_parsed = @parse_url($newurl);
-		if (isset($url_parsed)) {
+			$newurl = $old_location_info["scheme"]."://".$old_location_info["host"].$newurl;
+		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
 			$redirects++;
-			return fetch_url($newurl,$binary,$redirects,$timeout);
+			return fetch_url($newurl,$binary,$redirects,$timeout,$accept_content,$cookiejar);
 		}
 	}
 
 	$a->set_curl_code($http_code);
+	$a->set_curl_content_type($curl_info['content_type']);
 
 	$body = substr($s,strlen($header));
 	$a->set_curl_headers($header);
 	@curl_close($ch);
+
+	$a->save_timestamp($stamp1, "network");
+
 	return($body);
 }}
 
@@ -97,16 +121,20 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
 
 if(! function_exists('post_url')) {
 function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) {
+	$stamp1 = microtime(true);
+
 	$a = get_app();
 	$ch = curl_init($url);
-	if(($redirects > 8) || (! $ch)) 
+	if(($redirects > 8) || (! $ch))
 		return false;
+
+	logger("post_url: start ".$url, LOGGER_DATA);
 
 	curl_setopt($ch, CURLOPT_HEADER, true);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
 	curl_setopt($ch, CURLOPT_POST,1);
 	curl_setopt($ch, CURLOPT_POSTFIELDS,$params);
-	curl_setopt($ch, CURLOPT_USERAGENT, "Friendica");
+	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
 
 	if(intval($timeout)) {
 		curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
@@ -150,6 +178,8 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 	$curl_info = curl_getinfo($ch);
 	$http_code = $curl_info['http_code'];
 
+	logger("post_url: result ".$http_code." - ".$url, LOGGER_DATA);
+
 	$header = '';
 
 	// Pull out multiple headers, e.g. proxy and continuation headers
@@ -161,30 +191,36 @@ function post_url($url,$params, $headers = null, &$redirects = 0, $timeout = 0) 
 		$base = substr($base,strlen($chunk));
 	}
 
-	if($http_code == 301 || $http_code == 302 || $http_code == 303) {
-        $matches = array();
-        preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
-        $newurl = trim(array_pop($matches));
+	if($http_code == 301 || $http_code == 302 || $http_code == 303 || $http_code == 307) {
+		$matches = array();
+		preg_match('/(Location:|URI:)(.*?)\n/', $header, $matches);
+		$newurl = trim(array_pop($matches));
 		if(strpos($newurl,'/') === 0)
-			$newurl = $url . $newurl;
-        $url_parsed = @parse_url($newurl);
-        if (isset($url_parsed)) {
-            $redirects++;
-            return fetch_url($newurl,false,$redirects,$timeout);
-        }
-    }
+			$newurl = $old_location_info["scheme"] . "://" . $old_location_info["host"] . $newurl;
+		if (filter_var($newurl, FILTER_VALIDATE_URL)) {
+			$redirects++;
+			logger("post_url: redirect ".$url." to ".$newurl);
+			return post_url($newurl,$params, $headers, $redirects, $timeout);
+			//return fetch_url($newurl,false,$redirects,$timeout);
+		}
+	}
 	$a->set_curl_code($http_code);
 	$body = substr($s,strlen($header));
 
 	$a->set_curl_headers($header);
 
 	curl_close($ch);
+
+	$a->save_timestamp($stamp1, "network");
+
+	logger("post_url: end ".$url, LOGGER_DATA);
+
 	return($body);
 }}
 
 // Generic XML return
-// Outputs a basic dfrn XML status structure to STDOUT, with a <status> variable 
-// of $st and an optional text <message> of $message and terminates the current process. 
+// Outputs a basic dfrn XML status structure to STDOUT, with a <status> variable
+// of $st and an optional text <message> of $message and terminates the current process.
 
 if(! function_exists('xml_status')) {
 function xml_status($st, $message = '') {
@@ -210,7 +246,7 @@ function http_status_exit($val) {
 	if($val >= 200 && $val < 300)
 		$err = 'OK';
 
-	logger('http_status_exit ' . $val);	
+	logger('http_status_exit ' . $val);
 	header($_SERVER["SERVER_PROTOCOL"] . ' ' . $val . ' ' . $err);
 	killme();
 
@@ -262,16 +298,16 @@ function convert_xml_element_to_array($xml_element, &$recursion_depth=0) {
         }
 }}
 
-// Given an email style address, perform webfinger lookup and 
+// Given an email style address, perform webfinger lookup and
 // return the resulting DFRN profile URL, or if no DFRN profile URL
-// is located, returns an OStatus subscription template (prefixed 
+// is located, returns an OStatus subscription template (prefixed
 // with the string 'stat:' to identify it as on OStatus template).
 // If this isn't an email style address just return $s.
 // Return an empty string if email-style addresses but webfinger fails,
-// or if the resultant personal XRD doesn't contain a supported 
+// or if the resultant personal XRD doesn't contain a supported
 // subscription/friend-request attribute.
 
-// amended 7/9/2011 to return an hcard which could save potentially loading 
+// amended 7/9/2011 to return an hcard which could save potentially loading
 // a lengthy content page to scrape dfrn attributes
 
 if(! function_exists('webfinger_dfrn')) {
@@ -288,15 +324,15 @@ function webfinger_dfrn($s,&$hcard) {
 			if($link['@attributes']['rel'] === NAMESPACE_DFRN)
 				$profile_link = $link['@attributes']['href'];
 			if($link['@attributes']['rel'] === NAMESPACE_OSTATUSSUB)
-				$profile_link = 'stat:' . $link['@attributes']['template'];	
+				$profile_link = 'stat:' . $link['@attributes']['template'];
 			if($link['@attributes']['rel'] === 'http://microformats.org/profile/hcard')
-				$hcard = $link['@attributes']['href'];				
+				$hcard = $link['@attributes']['href'];
 		}
 	}
 	return $profile_link;
 }}
 
-// Given an email style address, perform webfinger lookup and 
+// Given an email style address, perform webfinger lookup and
 // return the array of link attributes from the personal XRD file.
 // On error/failure return an empty array.
 
@@ -338,7 +374,7 @@ function lrdd($uri, $debug = false) {
 	// All we have is an email address. Resource-priority is irrelevant
 	// because our URI isn't directly resolvable.
 
-	if(strstr($uri,'@')) {	
+	if(strstr($uri,'@')) {
 		return(webfinger($uri));
 	}
 
@@ -356,6 +392,7 @@ function lrdd($uri, $debug = false) {
 	logger('lrdd: constructed url: ' . $url);
 
 	$xml = fetch_url($url);
+
 	$headers = $a->get_curl_headers();
 
 	if (! $xml)
@@ -381,7 +418,7 @@ function lrdd($uri, $debug = false) {
 		foreach($properties as $prop)
 			if((string) $prop['@attributes'] === 'http://lrdd.net/priority/resource')
 				$priority = 'resource';
-	} 
+	}
 
 	// save the links in case we need them
 
@@ -405,14 +442,14 @@ function lrdd($uri, $debug = false) {
 				elseif(x($link['@attributes'],'href'))
 					$href = $link['@attributes']['href'];
 			}
-		}		
+		}
 	}
 
 	if((! isset($tpl)) || (! strpos($tpl,'{uri}')))
 		$tpl = '';
 
 	if($priority === 'host') {
-		if(strlen($tpl)) 
+		if(strlen($tpl))
 			$pxrd = str_replace('{uri}', urlencode($uri), $tpl);
 		elseif(isset($href))
 			$pxrd = $href;
@@ -424,7 +461,7 @@ function lrdd($uri, $debug = false) {
 
 		$lines = explode("\n",$headers);
 		if(count($lines)) {
-			foreach($lines as $line) {				
+			foreach($lines as $line) {
 				if((stristr($line,'link:')) && preg_match('/<([^>].*)>.*rel\=[\'\"]lrdd[\'\"]/',$line,$matches)) {
 					return(fetch_xrd_links($matches[1]));
 					break;
@@ -470,7 +507,7 @@ function lrdd($uri, $debug = false) {
 
 	$lines = explode("\n",$headers);
 	if(count($lines)) {
-		foreach($lines as $line) {				
+		foreach($lines as $line) {
 			// TODO alter the following regex to support multiple relations (space separated)
 			if((stristr($line,'link:')) && preg_match('/<([^>].*)>.*rel\=[\'\"]lrdd[\'\"]/',$line,$matches)) {
 				$pagelink = $matches[1];
@@ -518,7 +555,7 @@ function fetch_lrdd_template($host) {
 	}
 	if(count($links)) {
 		foreach($links as $link)
-			if($link['@attributes']['rel'] && $link['@attributes']['rel'] === 'lrdd')
+			if($link['@attributes']['rel'] && $link['@attributes']['rel'] === 'lrdd' && (!$link['@attributes']['type'] || $link['@attributes']['type'] === 'application/xrd+xml'))
 				$tpl = $link['@attributes']['template'];
 	}
 	if(! strpos($tpl,'{uri}'))
@@ -535,7 +572,7 @@ function fetch_xrd_links($url) {
 
 	$xrd_timeout = intval(get_config('system','xrd_timeout'));
 	$redirects = 0;
-	$xml = fetch_url($url,false,$redirects,(($xrd_timeout) ? $xrd_timeout : 20));
+	$xml = fetch_url($url,false,$redirects,(($xrd_timeout) ? $xrd_timeout : 20), "application/xrd+xml");
 
 	logger('fetch_xrd_links: ' . $xml, LOGGER_DATA);
 
@@ -586,14 +623,16 @@ function fetch_xrd_links($url) {
 
 if(! function_exists('validate_url')) {
 function validate_url(&$url) {
-	
+
+	if(get_config('system','disable_url_validation'))
+		return true;
 	// no naked subdomains (allow localhost for tests)
 	if(strpos($url,'.') === false && strpos($url,'/localhost/') === false)
 		return false;
 	if(substr($url,0,4) != 'http')
 		$url = 'http://' . $url;
 	$h = @parse_url($url);
-	
+
 	if(($h) && (dns_get_record($h['host'], DNS_A + DNS_CNAME + DNS_PTR) || filter_var($h['host'], FILTER_VALIDATE_IP) )) {
 		return true;
 	}
@@ -652,7 +691,7 @@ function allowed_url($url) {
 		foreach($allowed as $a) {
 			$pat = strtolower(trim($a));
 			if(($fnmatch && fnmatch($pat,$host)) || ($pat == $host)) {
-				$found = true; 
+				$found = true;
 				break;
 			}
 		}
@@ -686,7 +725,7 @@ function allowed_email($email) {
 		foreach($allowed as $a) {
 			$pat = strtolower(trim($a));
 			if(($fnmatch && fnmatch($pat,$domain)) || ($pat == $domain)) {
-				$found = true; 
+				$found = true;
 				break;
 			}
 		}
@@ -752,7 +791,7 @@ function add_fcontact($arr,$update = false) {
 			`alias` = '%s',
 			`pubkey` = '%s',
 			`updated` = '%s'
-			WHERE `url` = '%s' AND `network` = '%s' LIMIT 1", 
+			WHERE `url` = '%s' AND `network` = '%s'",
 			dbesc($arr['name']),
 			dbesc($arr['photo']),
 			dbesc($arr['request']),
@@ -794,12 +833,16 @@ function add_fcontact($arr,$update = false) {
 }
 
 
-function scale_external_images($s, $include_link = true, $scale_replace = false) {
+function scale_external_images($srctext, $include_link = true, $scale_replace = false) {
+
+	// Suppress "view full size"
+	if (intval(get_config('system','no_view_full_size')))
+		$include_link = false;
 
 	$a = get_app();
 
 	// Picture addresses can contain special characters
-	$s = htmlspecialchars_decode($s);
+	$s = htmlspecialchars_decode($srctext);
 
 	$matches = null;
 	$c = preg_match_all('/\[img.*?\](.*?)\[\/img\]/ism',$s,$matches,PREG_SET_ORDER);
@@ -821,17 +864,20 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 				$scaled = str_replace($scale_replace[0], $scale_replace[1], $mtch[1]);
 			else
 				$scaled = $mtch[1];
-			$i = fetch_url($scaled);
+			$i = @fetch_url($scaled);
+			if(! $i)
+				return $srctext;
 
-			$cache = get_config('system','itemcache');
-			if (($cache != '') and is_dir($cache)) {
-				$cachefile = $cache."/".hash("md5", $scaled);
+			$cachefile = get_cachefile(hash("md5", $scaled));
+			if ($cachefile != '') {
+				$stamp1 = microtime(true);
 				file_put_contents($cachefile, $i);
+				$a->save_timestamp($stamp1, "file");
 			}
 
 			// guess mimetype from headers or filename
 			$type = guess_image_type($mtch[1],true);
-			
+
 			if($i) {
 				$ph = new Photo($i, $type);
 				if($ph->is_valid()) {
@@ -845,7 +891,7 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 						$new_height = $ph->getHeight();
 						logger('scale_external_images: ' . $orig_width . '->' . $new_width . 'w ' . $orig_height . '->' . $new_height . 'h' . ' match: ' . $mtch[0], LOGGER_DEBUG);
 						$s = str_replace($mtch[0],'[img=' . $new_width . 'x' . $new_height. ']' . $scaled . '[/img]'
-							. "\n" . (($include_link) 
+							. "\n" . (($include_link)
 								? '[url=' . $mtch[1] . ']' . t('view full size') . '[/url]' . "\n"
 								: ''),$s);
 						logger('scale_external_images: new string: ' . $s, LOGGER_DEBUG);
@@ -856,8 +902,7 @@ function scale_external_images($s, $include_link = true, $scale_replace = false)
 	}
 
 	// replace the special char encoding
-
-	$s = htmlspecialchars($s,ENT_QUOTES,'UTF-8');
+	$s = htmlspecialchars($s,ENT_NOQUOTES,'UTF-8');
 	return $s;
 }
 
@@ -886,8 +931,8 @@ function fix_contact_ssl_policy(&$contact,$new_policy) {
 	}
 
 	if($ssl_changed) {
-		q("update contact set 
-			url = '%s', 
+		q("update contact set
+			url = '%s',
 			request = '%s',
 			notify = '%s',
 			poll = '%s',
@@ -918,7 +963,7 @@ function fix_contact_ssl_policy(&$contact,$new_policy) {
  * Return: The parsed XML in an array form. Use print_r() to see the resulting array structure.
  * Examples: $array =  xml2array(file_get_contents('feed.xml'));
  *              $array =  xml2array(file_get_contents('feed.xml', true, 1, 'attribute'));
- */ 
+ */
 
 function xml2array($contents, $namespaces = true, $get_attributes=1, $priority = 'attribute') {
     if(!$contents) return array();
@@ -942,7 +987,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 		return array();
 	}
 
-    xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, "UTF-8"); 
+    xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, "UTF-8");
 	// http://minutillo.com/steve/weblog/2004/6/17/php-xml-and-character-encodings-a-tale-of-sadness-rage-and-data-loss
     xml_parser_set_option($parser, XML_OPTION_CASE_FOLDING, 0);
     xml_parser_set_option($parser, XML_OPTION_SKIP_WHITE, 1);
@@ -976,7 +1021,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
         $result = array();
         $attributes_data = array();
-        
+
         if(isset($value)) {
             if($priority == 'tag') $result = $value;
             else $result['value'] = $value; // Put the value in a assoc array if we are in the 'Attribute' mode
@@ -992,7 +1037,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
         // See tag status and do the needed.
 		if($namespaces && strpos($tag,':')) {
-			$namespc = substr($tag,0,strrpos($tag,':')); 
+			$namespc = substr($tag,0,strrpos($tag,':'));
 			$tag = strtolower(substr($tag,strlen($namespc)+1));
 			$result['@namespace'] = $namespc;
 		}
@@ -1015,7 +1060,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
                 } else { // This section will make the value an array if multiple tags with the same name appear together
                     $current[$tag] = array($current[$tag],$result); // This will combine the existing item and the new item together to make an array
                     $repeated_tag_index[$tag.'_'.$level] = 2;
-                    
+
                     if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
                         $current[$tag]['0_attr'] = $current[$tag.'_attr'];
                         unset($current[$tag.'_attr']);
@@ -1038,7 +1083,7 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
 
                     // ...push the new element into that array.
                     $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
-                    
+
                     if($priority == 'tag' and $get_attributes and $attributes_data) {
                         $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
                     }
@@ -1049,11 +1094,11 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
                     $repeated_tag_index[$tag.'_'.$level] = 1;
                     if($priority == 'tag' and $get_attributes) {
                         if(isset($current[$tag.'_attr'])) { // The attribute of the last(0th) tag must be moved as well
-                            
+
                             $current[$tag]['0_attr'] = $current[$tag.'_attr'];
                             unset($current[$tag.'_attr']);
                         }
-                        
+
                         if($attributes_data) {
                             $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
                         }
@@ -1066,6 +1111,133 @@ function xml2array($contents, $namespaces = true, $get_attributes=1, $priority =
             $current = &$parent[$level-1];
         }
     }
-    
+
     return($xml_array);
-}  
+}
+
+function original_url($url, $depth=1, $fetchbody = false) {
+
+	$a = get_app();
+
+	// Remove Analytics Data from Google and other tracking platforms
+	$urldata = parse_url($url);
+	if (is_string($urldata["query"])) {
+		$query = $urldata["query"];
+		parse_str($query, $querydata);
+
+		if (is_array($querydata))
+			foreach ($querydata AS $param=>$value)
+				if (in_array($param, array("utm_source", "utm_medium", "utm_term", "utm_content", "utm_campaign",
+							"wt_mc", "pk_campaign", "pk_kwd", "mc_cid", "mc_eid",
+							"fb_action_ids", "fb_action_types", "fb_ref",
+							"awesm", "wtrid",
+							"woo_campaign", "woo_source", "woo_medium", "woo_content", "woo_term"))) {
+
+					$pair = $param."=".urlencode($value);
+					$url = str_replace($pair, "", $url);
+
+					// Second try: if the url isn't encoded completely
+					$pair = $param."=".str_replace(" ", "+", $value);
+					$url = str_replace($pair, "", $url);
+
+					// Third try: Maybey the url isn't encoded at all
+					$pair = $param."=".$value;
+					$url = str_replace($pair, "", $url);
+
+					$url = str_replace(array("?&", "&&"), array("?", ""), $url);
+				}
+
+		if (substr($url, -1, 1) == "?")
+			$url = substr($url, 0, -1);
+	}
+
+        if ($depth > 10)
+        	return($url);
+
+        $url = trim($url, "'");
+
+        $siteinfo = array();
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HEADER, 1);
+
+        if ($fetchbody)
+                curl_setopt($ch, CURLOPT_NOBODY, 0);
+        else
+                curl_setopt($ch, CURLOPT_NOBODY, 1);
+
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($ch, CURLOPT_USERAGENT, $a->get_useragent());
+
+        $header = curl_exec($ch);
+        $curl_info = @curl_getinfo($ch);
+        $http_code = $curl_info['http_code'];
+        curl_close($ch);
+
+        if ((($curl_info['http_code'] == "301") OR ($curl_info['http_code'] == "302"))
+                AND (($curl_info['redirect_url'] != "") OR ($curl_info['location'] != ""))) {
+                if ($curl_info['redirect_url'] != "")
+                        return(original_url($curl_info['redirect_url'], ++$depth, $fetchbody));
+                else
+                        return(original_url($curl_info['location'], ++$depth, $fetchbody));
+        }
+
+        $pos = strpos($header, "\r\n\r\n");
+
+        if ($pos)
+                $body = trim(substr($header, $pos));
+        else
+                $body = $header;
+
+        if (trim($body) == "")
+                return(original_url($url, ++$depth, true));
+
+        $doc = new DOMDocument();
+        @$doc->loadHTML($body);
+
+        $xpath = new DomXPath($doc);
+
+        $list = $xpath->query("//meta[@content]");
+        foreach ($list as $node) {
+                $attr = array();
+                if ($node->attributes->length)
+                        foreach ($node->attributes as $attribute)
+                                $attr[$attribute->name] = $attribute->value;
+
+                if (@$attr["http-equiv"] == 'refresh') {
+                        $path = $attr["content"];
+                        $pathinfo = explode(";", $path);
+                        $content = "";
+                        foreach ($pathinfo AS $value)
+                                if (substr(strtolower($value), 0, 4) == "url=")
+                                        return(original_url(substr($value, 4), ++$depth));
+                }
+        }
+
+        return($url);
+}
+
+if (!function_exists('short_link')) {
+function short_link($url) {
+	require_once('library/slinky.php');
+	$slinky = new Slinky($url);
+	$yourls_url = get_config('yourls','url1');
+	if ($yourls_url) {
+		$yourls_username = get_config('yourls','username1');
+		$yourls_password = get_config('yourls', 'password1');
+		$yourls_ssl = get_config('yourls', 'ssl1');
+		$yourls = new Slinky_YourLS();
+		$yourls->set('username', $yourls_username);
+		$yourls->set('password', $yourls_password);
+		$yourls->set('ssl', $yourls_ssl);
+		$yourls->set('yourls-url', $yourls_url);
+		$slinky->set_cascade( array($yourls, new Slinky_UR1ca(), new Slinky_Trim(), new Slinky_IsGd(), new Slinky_TinyURL()));
+	} else {
+		// setup a cascade of shortening services
+		// try to get a short link from these services
+		// in the order ur1.ca, trim, id.gd, tinyurl
+		$slinky->set_cascade(array(new Slinky_UR1ca(), new Slinky_Trim(), new Slinky_IsGd(), new Slinky_TinyURL()));
+	}
+	return $slinky->short();
+}};

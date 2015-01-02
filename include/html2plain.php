@@ -1,5 +1,5 @@
 <?php
-require_once "html2bbcode.php";
+require_once("include/html2bbcode.php");
 
 function breaklines($line, $level, $wraplength = 75)
 {
@@ -82,14 +82,23 @@ function collecturls($message) {
 
 	$urls = array();
 	foreach ($result as $treffer) {
+
+		$ignore = false;
+
 		// A list of some links that should be ignored
 		$list = array("/user/", "/tag/", "/group/", "/profile/", "/search?search=", "/search?tag=", "mailto:", "/u/", "/node/",
-				"//facebook.com/profile.php?id=", "//plus.google.com/");
+				"//facebook.com/profile.php?id=", "//plus.google.com/", "//twitter.com/");
 		foreach ($list as $listitem)
 			if (strpos($treffer[1], $listitem) !== false)
 				$ignore = true;
 
+		if ((strpos($treffer[1], "//twitter.com/") !== false) and (strpos($treffer[1], "/status/") !== false))
+				$ignore = false;
+
 		if ((strpos($treffer[1], "//plus.google.com/") !== false) and (strpos($treffer[1], "/posts") !== false))
+				$ignore = false;
+
+		if ((strpos($treffer[1], "//plus.google.com/") !== false) and (strpos($treffer[1], "/photos") !== false))
 				$ignore = false;
 
 		if (!$ignore)
@@ -104,6 +113,12 @@ function html2plain($html, $wraplength = 75, $compact = false)
 
 	$message = str_replace("\r", "", $html);
 
+	// replace all hashtag addresses
+/*	if (get_config("system", "remove_hashtags_on_export")) {
+		$pattern = '/#<a.*?href="(.*?)".*?>(.*?)<\/a>/is';
+		$message = preg_replace($pattern, '#$2', $message);
+	}
+*/
 	$doc = new DOMDocument();
 	$doc->preserveWhiteSpace = false;
 
@@ -170,15 +185,15 @@ function html2plain($html, $wraplength = 75, $compact = false)
 	node2bbcode($doc, 'h6', array(), "\n\n*", "*\n");
 
 	// Problem: there is no reliable way to detect if it is a link to a tag or profile
-	//node2bbcode($doc, 'a', array('href'=>'/(.+)/'), ' $1 ', '', true);
-	node2bbcode($doc, 'a', array('href'=>'/(.+)/', 'rel'=>'oembed'), ' $1 ', '', true);
+	//node2bbcode($doc, 'a', array('href'=>'/(.+)/'), ' $1 ', ' ', true);
+	//node2bbcode($doc, 'a', array('href'=>'/(.+)/', 'rel'=>'oembed'), ' $1 ', '', true);
 	//node2bbcode($doc, 'img', array('alt'=>'/(.+)/'), '$1', '');
 	//node2bbcode($doc, 'img', array('title'=>'/(.+)/'), '$1', '');
 	//node2bbcode($doc, 'img', array(), '', '');
 	if (!$compact)
-		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), '[img]$1', '[/img]');
+		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), ' [img]$1', '[/img] ');
 	else
-		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), '', '');
+		node2bbcode($doc, 'img', array('src'=>'/(.+)/'), ' ', ' ');
 
 	node2bbcode($doc, 'iframe', array('src'=>'/(.+)/'), ' $1 ', '', true);
 
@@ -203,13 +218,17 @@ function html2plain($html, $wraplength = 75, $compact = false)
 
 	$message = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
 
-	if (!$compact) {
+	if (!$compact AND ($message != "")) {
 		$counter = 1;
 		foreach ($urls as $id=>$url)
-			if (strpos($message, $url) == false)
-				$message .= "\n".$url." ";
-				//$message .= "\n[".($counter++)."] ".$url;
+			if ($url != "")
+				if (strpos($message, $url) === false)
+					$message .= "\n".$url." ";
+					//$message .= "\n[".($counter++)."] ".$url;
 	}
+
+	$message = str_replace("\n«", "«\n", $message);
+	$message = str_replace("»\n", "\n»", $message);
 
 	do {
 		$oldmessage = $message;

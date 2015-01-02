@@ -1,5 +1,7 @@
 <?php
 
+require_once("include/dba.php");
+
 /**
  * translation support
  */
@@ -85,17 +87,35 @@ function pop_lang() {
 }
 
 
-// load string translation table for alternate language
+// l
 
 if(! function_exists('load_translation_table')) {
+/**
+ * load string translation table for alternate language
+ *
+ * first plugin strings are loaded, then globals
+ * 
+ * @param string $lang language code to load
+ */
 function load_translation_table($lang) {
 	global $a;
 
+	$a->strings = array();
+	// load enabled plugins strings
+	$plugins = q("SELECT name FROM addon WHERE installed=1;");
+	if ($plugins!==false) {
+		foreach($plugins as $p) {
+			$name = $p['name'];
+			if(file_exists("addon/$name/lang/$lang/strings.php")) {
+				include("addon/$name/lang/$lang/strings.php");
+			}
+		}
+	}
+	
 	if(file_exists("view/$lang/strings.php")) {
 		include("view/$lang/strings.php");
 	}
-	else
-		$a->strings = array();
+
 }}
 
 // translate string if translation exists

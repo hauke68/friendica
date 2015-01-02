@@ -8,10 +8,10 @@ function expire_run(&$argv, &$argc){
 	if(is_null($a)) {
 		$a = new App;
 	}
-  
+
 	if(is_null($db)) {
 	    @include(".htconfig.php");
-    	require_once("dba.php");
+    	require_once("include/dba.php");
 	    $db = new dba($db_host, $db_user, $db_pass, $db_data);
     	unset($db_host, $db_user, $db_pass, $db_data);
   	};
@@ -24,7 +24,6 @@ function expire_run(&$argv, &$argc){
 
 	load_config('config');
 	load_config('system');
-
 
 	$a->set_baseurl(get_config('system','url'));
 
@@ -39,7 +38,7 @@ function expire_run(&$argv, &$argc){
 		q("optimize table item");
 
 	logger('expire: start');
-	
+
 	$r = q("SELECT `uid`,`username`,`expire` FROM `user` WHERE `expire` != 0");
 	if(count($r)) {
 		foreach($r as $rr) {
@@ -47,6 +46,10 @@ function expire_run(&$argv, &$argc){
 			item_expire($rr['uid'],$rr['expire']);
 		}
 	}
+
+	load_hooks();
+
+	call_hooks('expire');
 
 	return;
 }

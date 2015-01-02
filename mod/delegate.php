@@ -1,4 +1,10 @@
 <?php
+require_once('mod/settings.php');
+
+function delegate_init(&$a) {
+	return settings_init($a);
+}
+
 
 function delegate_content(&$a) {
 
@@ -116,6 +122,9 @@ function delegate_content(&$a) {
 		foreach($r as $rr)
 			if(! in_array($rr['uid'],$uids))
 				$potentials[] = $rr;
+
+	require_once("mod/settings.php");
+	settings_init($a);
 
 	$o = replace_macros(get_markup_template('delegate.tpl'),array(
 		'$header' => t('Delegate Page Management'),

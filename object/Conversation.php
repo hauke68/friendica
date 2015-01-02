@@ -127,12 +127,17 @@ class Conversation extends BaseObject {
 	 *      _ false on failure
 	 */
 	public function get_template_data($alike, $dlike) {
+		global $a;
 		$result = array();
+
+		$i = 0;
 
 		foreach($this->threads as $item) {
 			if($item->get_data_value('network') === NETWORK_MAIL && local_user() != $item->get_data_value('uid'))
 				continue;
+
 			$item_data = $item->get_template_data($alike, $dlike);
+
 			if(!$item_data) {
 				logger('[ERROR] Conversation::get_template_data : Failed to get item template data ('. $item->get_id() .').', LOGGER_DEBUG);
 				return false;
@@ -140,6 +145,7 @@ class Conversation extends BaseObject {
 			$result[] = $item_data;
 		}
 
+		//$a->mark_timestamp();
 		return $result;
 	}
 
